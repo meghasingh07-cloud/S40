@@ -1,0 +1,631 @@
+/* =========================================================
+   FRAUD INTELLIGENCE
+========================================================= */
+
+.fi-page {
+  padding: 28px 32px 50px;
+  background: #f7f8fc;
+  min-height: calc(100vh - 70px);
+  color: #202333;
+}
+
+/* HEADER */
+
+.fi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 25px;
+}
+
+.fi-back {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #667085;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 18px;
+}
+
+.fi-back:hover {
+  color: #3b6fe0;
+}
+
+.fi-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #3b6fe0;
+  margin-bottom: 6px;
+}
+
+.fi-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.fi-header p {
+  margin: 7px 0 0;
+  color: #7a8194;
+  font-size: 13px;
+}
+
+.fi-status {
+  background: #ffffff;
+  border: 1px solid #e5e8ef;
+  border-radius: 30px;
+  padding: 10px 15px;
+  font-size: 12px;
+  color: #475467;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fi-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1fa971;
+  box-shadow: 0 0 0 4px #e4f7ef;
+}
+
+/* SEARCH */
+
+.fi-search-card {
+  background: #ffffff;
+  border: 1px solid #e7e9ef;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 25px;
+  box-shadow: 0 2px 8px rgba(20, 30, 50, 0.03);
+}
+
+.fi-search-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.fi-search-subtitle {
+  color: #8a91a3;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.fi-search-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.fi-search-row input {
+  flex: 1;
+  height: 44px;
+  border: 1px solid #dfe3eb;
+  border-radius: 9px;
+  padding: 0 14px;
+  outline: none;
+  font-size: 13px;
+  color: #202333;
+  background: #ffffff;
+}
+
+.fi-search-row input:focus {
+  border-color: #3b6fe0;
+  box-shadow: 0 0 0 3px rgba(59, 111, 224, 0.08);
+}
+
+.fi-search-row button {
+  height: 44px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 9px;
+  background: #3b6fe0;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fi-search-row button:hover {
+  background: #315fc5;
+}
+
+.fi-search-result {
+  margin-top: 15px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #fff7f7;
+  border: 1px solid #ffd8d8;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.fi-result-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #ffe8e8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fi-search-result strong {
+  font-size: 13px;
+}
+
+.fi-search-result p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #7a8194;
+}
+
+.fi-high-badge {
+  margin-left: auto;
+  background: #ffe6e6;
+  color: #d9363e;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* SECTION TITLE */
+
+.fi-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 14px;
+}
+
+.fi-section-title h2 {
+  font-size: 17px;
+  margin: 0;
+}
+
+.fi-section-title p {
+  font-size: 11px;
+  color: #8a91a3;
+  margin: 4px 0 0;
+}
+
+.fi-updated {
+  color: #1fa971;
+  font-size: 11px;
+}
+
+/* STATS */
+
+.fi-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.fi-stat {
+  background: white;
+  border: 1px solid #e7e9ef;
+  border-radius: 13px;
+  padding: 17px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.fi-stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+}
+
+.fi-stat-icon.blue {
+  background: #edf3ff;
+}
+
+.fi-stat-icon.red {
+  background: #fff0f0;
+}
+
+.fi-stat-icon.orange {
+  background: #fff5e7;
+}
+
+.fi-stat-icon.green {
+  background: #eaf8f2;
+}
+
+.fi-stat span {
+  display: block;
+  font-size: 11px;
+  color: #8a91a3;
+}
+
+.fi-stat strong {
+  display: block;
+  font-size: 21px;
+  margin-top: 2px;
+}
+
+.fi-stat small {
+  display: block;
+  color: #1fa971;
+  font-size: 10px;
+  margin-top: 3px;
+}
+
+/* MAIN GRID */
+
+.fi-main-grid,
+.fi-bottom-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.fi-card {
+  background: #ffffff;
+  border: 1px solid #e7e9ef;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.fi-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 17px;
+}
+
+.fi-card-header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.fi-card-header p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #8a91a3;
+}
+
+.fi-live {
+  background: #eaf8f2;
+  color: #1b9c68;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 5px 8px;
+  border-radius: 5px;
+}
+
+/* THREATS */
+
+.fi-threat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid #f0f1f5;
+}
+
+.fi-threat:last-child {
+  border-bottom: none;
+}
+
+.fi-threat-number {
+  font-size: 11px;
+  color: #9aa1b2;
+  width: 20px;
+}
+
+.fi-threat-content {
+  flex: 1;
+}
+
+.fi-threat-content strong {
+  display: block;
+  font-size: 12px;
+}
+
+.fi-threat-content span {
+  display: block;
+  color: #8a91a3;
+  font-size: 10px;
+  margin-top: 3px;
+}
+
+.fi-mini-bar {
+  height: 4px;
+  background: #eef0f4;
+  border-radius: 10px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.fi-mini-bar div {
+  height: 100%;
+  background: #e5484d;
+  border-radius: 10px;
+}
+
+.fi-threat-percent {
+  font-size: 12px;
+  font-weight: 700;
+  color: #d9363e;
+}
+
+/* CHANNELS */
+
+.fi-channel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid #f0f1f5;
+}
+
+.fi-channel:last-child {
+  border-bottom: none;
+}
+
+.fi-channel-left {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.fi-channel-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fi-channel-icon.whatsapp {
+  background: #eaf8f2;
+}
+
+.fi-channel-icon.call {
+  background: #edf3ff;
+}
+
+.fi-channel-icon.sms {
+  background: #fff5e7;
+}
+
+.fi-channel-icon.email {
+  background: #f1edff;
+}
+
+.fi-channel-left strong {
+  display: block;
+  font-size: 12px;
+}
+
+.fi-channel-left span {
+  display: block;
+  font-size: 10px;
+  color: #8a91a3;
+  margin-top: 2px;
+}
+
+.fi-channel > strong {
+  font-size: 12px;
+}
+
+/* HOTSPOTS */
+
+.fi-location {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f1f5;
+}
+
+.fi-location:last-child {
+  border-bottom: none;
+}
+
+.fi-location-rank {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #f3f4f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #7b8294;
+}
+
+.fi-location-info {
+  flex: 1;
+}
+
+.fi-location-info strong {
+  display: block;
+  font-size: 12px;
+}
+
+.fi-location-info span {
+  display: block;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.fi-location.high .fi-location-info span {
+  color: #d9363e;
+}
+
+.fi-location.medium .fi-location-info span {
+  color: #e59a16;
+}
+
+.fi-location-score {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.fi-location.high .fi-location-score {
+  color: #d9363e;
+}
+
+.fi-location.medium .fi-location-score {
+  color: #e59a16;
+}
+
+/* INTELLIGENCE */
+
+.fi-view-all {
+  border: none;
+  background: transparent;
+  color: #3b6fe0;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.fi-intelligence {
+  display: flex;
+  gap: 11px;
+  padding: 13px 0;
+  border-bottom: 1px solid #f0f1f5;
+}
+
+.fi-intelligence:last-child {
+  border-bottom: none;
+}
+
+.fi-intel-icon {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.fi-intel-icon.red {
+  background: #fff0f0;
+  color: #d9363e;
+}
+
+.fi-intel-icon.orange {
+  background: #fff5e7;
+  color: #d99215;
+}
+
+.fi-intel-icon.blue {
+  background: #edf3ff;
+  color: #3b6fe0;
+}
+
+.fi-intelligence strong {
+  font-size: 12px;
+}
+
+.fi-intelligence p {
+  font-size: 10px;
+  color: #7f8698;
+  margin: 3px 0;
+}
+
+.fi-intelligence small {
+  font-size: 9px;
+  color: #a0a5b2;
+}
+
+/* ALERT */
+
+.fi-alert {
+  background: #eef4ff;
+  border: 1px solid #dce8ff;
+  border-radius: 14px;
+  padding: 17px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.fi-alert-icon {
+  width: 40px;
+  height: 40px;
+  background: #dfeaff;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fi-alert strong {
+  font-size: 13px;
+}
+
+.fi-alert p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #697386;
+  line-height: 1.5;
+}
+
+.fi-alert button {
+  margin-left: auto;
+  border: none;
+  background: #3b6fe0;
+  color: white;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 1100px) {
+  .fi-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .fi-main-grid,
+  .fi-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .fi-page {
+    padding: 20px;
+  }
+
+  .fi-header {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .fi-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .fi-search-row {
+    flex-direction: column;
+  }
+
+  .fi-alert {
+    align-items: flex-start;
+  }
+
+  .fi-alert button {
+    display: none;
+  }
+}
