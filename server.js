@@ -2,6 +2,7 @@ const express= require("express");
 const mongoose= require ("mongoose");
 const cors= require("cors");
 require("dotenv").config();
+require("dns").setServers(["8.8.8.8", "1.1.1.1"]);
 
 const authRoutes = require("./routes/authRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
@@ -10,6 +11,7 @@ const messageRoutes = require("./routes/messageRoutes");
 const messageCheckRoutes = require("./routes/messageCheckRoutes1");
 const urlRoutes = require("./routes/urlRoutes");
 const familyRoutes = require("./routes/familyRoutes");
+const fraudShieldAIRoutes = require("./routes/fraudShieldAIRoutes");
 
 
 const app=express();
@@ -24,6 +26,7 @@ app.use("/api/message", messageRoutes);
 app.use("/api/message", messageCheckRoutes);
 app.use("/api/url", urlRoutes);
 app.use("/api/family", familyRoutes);
+app.use("/api/ai", fraudShieldAIRoutes);
 
 app.get("/",(req,res)=>{
     res.json({

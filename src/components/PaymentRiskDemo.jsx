@@ -184,8 +184,7 @@ export default function PaymentRiskDemo({ onBack }) {
     // 1. OTP / PIN / CVV THEFT
     // -----------------------------
     const isDemandingCredentials =
-      /(tell me|give me|read out|share with me|send me|what is).*(your )?(otp|upi pin|pin|password|passcode|cvv|secret code|6-digit|4-digit)/i;
-
+      /(tell me|give me|read out|share( with)? me|send me|what is).*(your )?(otp|upi pin|pin|password|passcode|cvv|secret code|6-digit|4-digit)/i;
     if (
       isDemandingCredentials.test(raw) &&
       !isSafeNarration
