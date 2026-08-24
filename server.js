@@ -7,6 +7,7 @@ const authRoutes = require("./routes/authRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const scamRoutes = require("./routes/scamRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const messageCheckRoutes = require("./routes/messageCheckRoutes1");
 const urlRoutes = require("./routes/urlRoutes");
 const familyRoutes = require("./routes/familyRoutes");
 
@@ -20,6 +21,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/scam", scamRoutes);
 app.use("/api/message", messageRoutes);
+app.use("/api/message", messageCheckRoutes);
 app.use("/api/url", urlRoutes);
 app.use("/api/family", familyRoutes);
 
