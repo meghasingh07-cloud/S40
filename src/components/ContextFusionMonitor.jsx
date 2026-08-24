@@ -153,6 +153,9 @@ export default function ContextFusionMonitor() {
       }
     };
     recognition.onend = () => setListening(false);
+    recognition.onerror = (e) => {
+      console.error("Speech recognition error:", e.error, e.message);
+    };
     recognitionRef.current = recognition;
     callTextRef.current = "";
     setTranscript("");
