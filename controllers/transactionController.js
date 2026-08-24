@@ -45,62 +45,62 @@ const createTransaction = async (req, res) => {
             riskLevel: riskResult.riskLevel
         });
 
-        // Save risk events
-        const events = riskResult.events.map((event,index) => ({
-            ...event,
-            userId: req.user.userId,
-            transactionId: transaction._id,
-            sessionId,
-            eventOrder: session.totalEvents + index + 1
-        }));
+        // sessionId is optional. When present, this transaction is tied to an
+        // active ScamSession and contributes its risk events to that session's
+        // running score, exactly as before. When absent (e.g. a standalone
+        // payment scored by the FraudShield AI bridge), the transaction is
+        // still created and risk-scored, just without a session to update.
+        let session = null;
 
-        const ScamSession = require("../models/ScamSession");
+        if (sessionId) {
+            const ScamSession = require("../models/ScamSession");
 
-
-        if (!sessionId) {
-            return res.status(400).json({
-                message: "sessionId is required"
+            session = await ScamSession.findOne({
+                _id: sessionId,
+                userId: req.user.userId,
+                status: "active"
             });
+
+            if (!session) {
+                return res.status(404).json({
+                    message: "Active scam session not found"
+                });
+            }
+
+            // Save risk events, ordered after whatever events already exist on the session
+            const events = riskResult.events.map((event, index) => ({
+                ...event,
+                userId: req.user.userId,
+                transactionId: transaction._id,
+                sessionId,
+                eventOrder: session.totalEvents + index + 1
+            }));
+
+            if (events.length > 0) {
+                await RiskEvent.insertMany(events);
+            }
+
+            const totalContribution = riskResult.events.reduce(
+                (sum, event) => sum + event.riskContribution,
+                0
+            );
+
+            session.currentRiskScore = Math.min(
+                session.currentRiskScore + totalContribution,
+                100
+            );
+
+            session.riskLevel =
+                session.currentRiskScore >= 70
+                    ? "HIGH"
+                    : session.currentRiskScore >= 40
+                        ? "MEDIUM"
+                        : "LOW";
+
+            session.totalEvents += events.length;
+
+            await session.save();
         }
-
-        
-
-        const session = await ScamSession.findOne({
-            _id: sessionId,
-            userId: req.user.userId,
-            status: "active"
-        });
-
-        if (!session) {
-            return res.status(404).json({
-                message: "Active scam session not found"
-            });
-        }
-
-        if (events.length > 0) {
-            await RiskEvent.insertMany(events);
-        }
-
-        const totalContribution = riskResult.events.reduce(
-            (sum, event) => sum + event.riskContribution,
-            0
-        );
-
-        session.currentRiskScore = Math.min(
-            session.currentRiskScore + totalContribution,
-            100
-        );
-
-        session.riskLevel =
-            session.currentRiskScore >= 70
-                ? "HIGH"
-                : session.currentRiskScore >= 40
-                ? "MEDIUM"
-                : "LOW";
-
-        session.totalEvents += events.length;
-
-        await session.save();
 
         res.status(201).json({
             message: "Transaction analyzed successfully",
