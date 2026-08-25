@@ -21,13 +21,16 @@ import {
 
 import { emitPaymentInitiated } from "./contextFusion";
 
+// Destination keys shared with Dashboard's own sidebar hrefs and with
+// RiskAnalysis's sidebar (see App.jsx's onNavigate dispatcher) -- clicking
+// any of these routes to the same place regardless of which page you're on.
 const NAV_ITEMS = [
-  { icon: Home, label: "Dashboard" },
-  { icon: CreditCard, label: "Transactions" },
-  { icon: BrainCircuit, label: "Risk Analysis" },
-  { icon: AlertTriangle, label: "Scam Intelligence" },
-  { icon: Users, label: "Family Protection" },
-  { icon: Bell, label: "Emergency Center" },
+  { icon: Home, label: "Dashboard", destination: "dashboard" },
+  { icon: CreditCard, label: "Transactions", destination: "transactions" },
+  { icon: BrainCircuit, label: "Risk Analysis", destination: "risk-analysis" },
+  { icon: AlertTriangle, label: "Scam Intelligence", destination: "fraud-intelligence" },
+  { icon: Users, label: "Family Protection", destination: "family-protection" },
+  { icon: Bell, label: "Emergency Center", destination: "emergency" },
 ];
 
 // These feed the real FraudShield AI payment contract (beneficiary_id /
@@ -196,7 +199,7 @@ function RiskGauge({ score, level }) {
   );
 }
 
-export default function PaymentSimulator() {
+export default function PaymentSimulator({ onBack, onNavigate }) {
   const [amount, setAmount] = useState("25,000");
   const [recipient, setRecipient] = useState("Rahul Kumar");
   const [category, setCategory] = useState("other");
@@ -436,7 +439,12 @@ export default function PaymentSimulator() {
               <button
                 key={item.label}
                 type="button"
-                className={`nav-item ${item.label === "Risk Analysis" ? "active" : ""}`}
+                className="nav-item"
+                onClick={
+                  item.label === "Dashboard"
+                    ? onBack
+                    : () => onNavigate?.(item.destination)
+                }
               >
                 <Icon size={20} strokeWidth={1.8} />
                 <span>{item.label}</span>
@@ -459,7 +467,7 @@ export default function PaymentSimulator() {
       {/* MAIN */}
       <div className="main">
         <header className="topbar">
-          <button type="button" className="back-btn">
+          <button type="button" className="back-btn" onClick={onBack}>
             <ChevronLeft size={18} />
             Back to Dashboard
           </button>

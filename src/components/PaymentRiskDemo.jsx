@@ -26,6 +26,25 @@ import {
   BrainCircuit
 } from 'lucide-react';
 
+// Reuses the existing AI_BACKEND Gemini integration (same service/endpoint
+// already used by the Dashboard's Risk Analysis page) as a supplementary
+// semantic layer on top of this component's own rule engine. The rule
+// engine remains authoritative and unchanged; Gemini's contribution is
+// additive-only and generic (driven entirely by its own returned
+// score/level/signals for whatever text is supplied -- never keyed to any
+// specific example phrase).
+const AI_BACKEND_URL =
+  import.meta.env.VITE_FRAUDSHIELD_AI_URL || 'http://localhost:8000';
+
+function combineWithGemini(ruleScore, gemini) {
+  const bonus = Math.round((gemini.score || 0) * 0.35);
+  let combined = Math.min(98, ruleScore + bonus);
+  if (gemini.score >= 85) {
+    combined = Math.max(combined, gemini.score);
+  }
+  return Math.min(98, combined);
+}
+
 export default function PaymentRiskDemo({ onBack }) {
   const [step, setStep] = useState(1);
 
@@ -57,6 +76,52 @@ export default function PaymentRiskDemo({ onBack }) {
   const [activeScamType, setActiveScamType] = useState(null);
 
   const recognitionRef = useRef(null);
+  const geminiRequestIdRef = useRef(0);
+
+  // -----------------------------
+  // GEMINI SEMANTIC SUPPLEMENT (additive only; rule engine above stays
+  // the source of truth). Debounced on the same `transcript` text the
+  // rule engine already reacts to, via the existing AI_BACKEND service.
+  // -----------------------------
+  useEffect(() => {
+    const trimmed = transcript.trim();
+    if (!trimmed) return undefined;
+
+    const requestId = ++geminiRequestIdRef.current;
+
+    const timer = setTimeout(() => {
+      fetch(`${AI_BACKEND_URL}/api/v1/risk/text-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: trimmed }),
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (!data || !data.available) return;
+          if (requestId !== geminiRequestIdRef.current) return; // superseded by newer text
+
+          const geminiVectors = (data.signals || []).map((s) => ({
+            type: `gemini_${s.type || 'signal'}`,
+            title: `${String(s.type || 'signal').replace(/_/g, ' ')} (Gemini)`,
+            detail: s.detail || 'Detected by Gemini semantic analysis.',
+            severity:
+              data.level === 'CRITICAL' || data.level === 'HIGH'
+                ? 'critical'
+                : 'warning',
+          }));
+
+          if (geminiVectors.length > 0) {
+            setDetectedVectors((prev) => [...prev, ...geminiVectors]);
+          }
+          setRiskScore((prev) => combineWithGemini(prev, data));
+        })
+        .catch(() => {
+          // Gemini/AI_BACKEND unavailable: keep the existing rule-based result as-is.
+        });
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [transcript]);
 
   const isFormValid =
     recipient.trim() !== '' &&
@@ -202,6 +267,39 @@ export default function PaymentRiskDemo({ onBack }) {
       identifiedScam = 'otp_theft';
       primaryIntent =
         'Credential Extraction Trap';
+    }
+
+    // -----------------------------
+    // 1B. BANK/INSTITUTION IMPERSONATION MONEY REQUEST
+    // -----------------------------
+    const isMoneyDemand =
+      /(send me|transfer to me|give me|transfer)\s+(the\s+)?(money|cash|[₹$]?\s?\d[\d,]*)|need\s+(the\s+)?\d.{0,20}from you/i;
+
+    const hasInstitutionPretext =
+      /(bank|sbi|hdfc|icici|axis bank|kyc|verif|bank employee|bank official|account (will be|is|has been) (blocked|suspended))/i;
+
+    if (
+      isMoneyDemand.test(raw) &&
+      hasInstitutionPretext.test(raw) &&
+      !isSafeNarration
+    ) {
+      vectors.push({
+        type: 'bank_impersonation_payment_request',
+        title:
+          'Bank/Institution Impersonation Payment Request',
+        detail:
+          'Caller claims bank/institution authority and demands an outbound payment under a verification pretext.',
+        severity: 'critical'
+      });
+
+      score += 65;
+
+      if (!identifiedScam) {
+        identifiedScam = 'bank_impersonation_payment_request';
+      }
+
+      primaryIntent =
+        'Bank Impersonation Payment Request';
     }
 
     // -----------------------------

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Search,
@@ -23,10 +23,37 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+// Reuses the existing AI_BACKEND Gemini integration (same service/endpoint
+// already used by the Dashboard's Risk Analysis page) as a supplementary
+// semantic layer on top of this component's own rule engine below. The
+// rule engine remains authoritative and unchanged; Gemini's contribution
+// is additive-only and generic (driven entirely by its own returned
+// score/level/signals -- never keyed to any specific example phrase).
+const AI_BACKEND_URL =
+  import.meta.env.VITE_FRAUDSHIELD_AI_URL || "http://localhost:8000";
+
+function combineWithGemini(ruleScore, gemini) {
+  const bonus = Math.round((gemini.score || 0) * 0.35);
+  let combined = Math.min(100, ruleScore + bonus);
+  if (gemini.score >= 85) {
+    combined = Math.max(combined, gemini.score);
+  }
+  return Math.min(100, combined);
+}
+
+function riskLevelForScore(score) {
+  if (score >= 70) return "CRITICAL";
+  if (score >= 45) return "HIGH";
+  if (score >= 25) return "MEDIUM";
+  return "LOW";
+}
+
 export default function ScamDetection({ onBack }) {
   const [input, setInput] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [activeExample, setActiveExample] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const geminiRequestIdRef = useRef(0);
 
   const examples = [
     {
@@ -63,7 +90,7 @@ export default function ScamDetection({ onBack }) {
     },
   ];
 
-  const analyzeScam = (text = input) => {
+  const analyzeScam = async (text = input) => {
     if (!text.trim()) return;
 
     const normalized = text.toLowerCase();
@@ -275,7 +302,7 @@ export default function ScamDetection({ onBack }) {
       trust: hasImpersonation ? 74 : 20,
     };
 
-    setAnalysis({
+    const ruleResult = {
       score,
       riskLevel,
       scamType,
@@ -284,7 +311,56 @@ export default function ScamDetection({ onBack }) {
       signals,
       manipulation,
       text,
-    });
+    };
+
+    // Gemini is fetched and merged in BEFORE anything is shown, so the UI
+    // never flashes the rule-only score and then visibly jumps once the
+    // semantic supplement arrives -- only the final, combined verdict is
+    // ever rendered (falls back to the rule-only result if Gemini/
+    // AI_BACKEND is unavailable).
+    const requestId = ++geminiRequestIdRef.current;
+    setAnalysis(null);
+    setIsAnalyzing(true);
+
+    let finalResult = ruleResult;
+    try {
+      const response = await fetch(`${AI_BACKEND_URL}/api/v1/risk/text-analysis`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = response.ok ? await response.json() : null;
+
+      if (data && data.available) {
+        const geminiSignals = (data.signals || []).map((s) => ({
+          title: `${String(s.type || "signal").replace(/_/g, " ")} (Gemini)`,
+          description: s.detail || "Detected by Gemini semantic analysis.",
+          icon: <Brain size={15} />,
+          severity:
+            data.level === "CRITICAL"
+              ? "CRITICAL"
+              : data.level === "HIGH"
+              ? "HIGH"
+              : "MEDIUM",
+        }));
+
+        const combinedScore = combineWithGemini(ruleResult.score, data);
+
+        finalResult = {
+          ...ruleResult,
+          score: combinedScore,
+          riskLevel: riskLevelForScore(combinedScore),
+          signals: [...ruleResult.signals, ...geminiSignals],
+        };
+      }
+    } catch {
+      // Gemini/AI_BACKEND unavailable: fall back to the rule-only result.
+    }
+
+    if (requestId === geminiRequestIdRef.current) {
+      setAnalysis(finalResult);
+      setIsAnalyzing(false);
+    }
   };
 
   const loadExample = (example) => {
@@ -529,14 +605,14 @@ export default function ScamDetection({ onBack }) {
 
               <button
                 onClick={() => analyzeScam()}
-                disabled={!input.trim()}
+                disabled={!input.trim() || isAnalyzing}
                 style={{
                   border: "none",
                   borderRadius: "9px",
-                  background: input.trim() ? "#3b6fe0" : "#dfe3eb",
+                  background: input.trim() && !isAnalyzing ? "#3b6fe0" : "#dfe3eb",
                   color: "white",
                   padding: "10px 17px",
-                  cursor: input.trim() ? "pointer" : "not-allowed",
+                  cursor: input.trim() && !isAnalyzing ? "pointer" : "not-allowed",
                   fontSize: "11px",
                   fontWeight: 800,
                   display: "flex",
@@ -545,7 +621,7 @@ export default function ScamDetection({ onBack }) {
                 }}
               >
                 <Search size={14} />
-                Analyze Scam
+                {isAnalyzing ? "Analyzing..." : "Analyze Scam"}
               </button>
             </div>
           </div>

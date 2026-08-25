@@ -12,7 +12,7 @@ import FraudIntelligence from "./components/FraudIntelligence";
 import translations from "./translations";
 import "./Dashboard.css";
 
-export default function Dashboard({ onNavigate }) {
+export default function Dashboard({ onNavigate, initialSection }) {
 
   // =====================================================
   // PAGE STATES
@@ -211,6 +211,50 @@ export default function Dashboard({ onNavigate }) {
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
   };
+
+
+  // =====================================================
+  // OPEN A SECTION REQUESTED FROM OUTSIDE (e.g. the sidebar on the
+  // RiskAnalysis / PaymentSimulator top-level pages, which live outside
+  // this component and route back here via onNavigate). Shares the exact
+  // same destination keys as this sidebar's own href fragments below.
+  // =====================================================
+
+  useEffect(() => {
+    if (!initialSection) return;
+
+    switch (initialSection.section) {
+      case "transactions":
+        openTransactions();
+        break;
+      case "payment":
+        openPaymentDemo();
+        break;
+      case "scam-detection":
+        openScamDetection();
+        break;
+      case "scam-chain":
+        openScamChainTimeline();
+        break;
+      case "family-protection":
+        openFamilyProtection();
+        break;
+      case "fraud-intelligence":
+        openFraudIntelligence();
+        break;
+      case "emergency":
+        openEmergencyCenter();
+        break;
+      case "settings":
+        openSettings();
+        break;
+      case "dashboard":
+      default:
+        backToDashboard();
+        break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSection]);
 
 
   return (
@@ -1593,6 +1637,35 @@ export default function Dashboard({ onNavigate }) {
 
                     <div className="lbl">
                       {t.makePayment}
+                    </div>
+
+                  </div>
+
+
+                  {/* AI PAYMENT RISK ANALYZER */}
+
+                  <div
+                    className="qa-item"
+
+                    onClick={() => onNavigate("payment-simulator")}
+
+                    style={{
+                      cursor: "pointer",
+                    }}
+                  >
+
+                    <div
+                      className="ic"
+                      style={{
+                        background: "var(--blue-light)",
+                        color: "var(--blue)",
+                      }}
+                    >
+                      🛡️
+                    </div>
+
+                    <div className="lbl">
+                      AI Payment Risk Analyzer
                     </div>
 
                   </div>
