@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import statistics
 from datetime import datetime, timezone
@@ -173,7 +174,7 @@ def action(score: int) -> str:
 
 def gemini_explanation(context: str) -> str | None:
     key = os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
     if not key or genai is None:
         return None
     try:
@@ -187,6 +188,58 @@ def gemini_explanation(context: str) -> str | None:
         response = client.models.generate_content(model=model, contents=prompt)
         text = getattr(response, "text", None)
         return text.strip() if text else None
+    except Exception:
+        return None
+
+
+def gemini_text_risk_analysis(text: str) -> dict[str, Any] | None:
+    """
+    Same Gemini client/credentials as gemini_explanation(), but asks the
+    model to produce the full structured risk assessment itself (score,
+    level, signals, explanation) for a raw message/call transcript, rather
+    than only explaining a score already computed elsewhere. Used by the
+    Dashboard's Risk Analysis page.
+    """
+    key = os.getenv("GEMINI_API_KEY")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    if not key or genai is None:
+        return None
+    try:
+        client = genai.Client(api_key=key)
+        prompt = (
+            "You are FraudShield AI, a fraud-risk reasoning layer for a payment-safety app. "
+            "Analyze the message below for social-engineering / financial-fraud risk "
+            "(urgency, threats, authority impersonation, payment or credential requests, "
+            "secrecy pressure, remote-access requests, suspicious justifications). "
+            "Respond with ONLY a single JSON object, no markdown fences, no extra text, "
+            "in exactly this shape:\n"
+            '{"score": <integer 0-100>, "level": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL", '
+            '"signals": [{"type": "<short_snake_case_label>", "detail": "<short reason>"}], '
+            '"explanation": "<2-3 sentence plain-language summary>"}\n\n'
+            "Message:\n" + text
+        )
+        response = client.models.generate_content(model=model, contents=prompt)
+        raw = getattr(response, "text", None)
+        if not raw:
+            return None
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`")
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
+        parsed = json.loads(cleaned)
+        score = clamp(float(parsed.get("score", 0)))
+        parsed_level = str(parsed.get("level") or level(score)).upper()
+        if parsed_level not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}:
+            parsed_level = level(score)
+        signals = parsed.get("signals") or []
+        if not isinstance(signals, list):
+            signals = []
+        return {
+            "score": score,
+            "level": parsed_level,
+            "signals": signals,
+            "explanation": str(parsed.get("explanation") or "").strip(),
+        }
     except Exception:
         return None
 
@@ -370,22 +423,26 @@ def local_voice_analysis(text: str, language: str = "en-IN") -> dict[str, Any]:
             "otp", "one time password", "one-time password", "upi pin", "pin batao",
             "pin bataye", "pin bataiye", "otp batao", "otp bataye", "otp batayiye",
             "cvv", "password", "verification code", "code batao", "code bataye",
-            "code share", "otp share", "pin share", "details batao", "bank details"
+            "code share", "otp share", "pin share", "details batao", "bank details",
+            "send otp", "provide otp", "share otp"
         ], 38, "Credential extraction request"),
         ("impersonation", [
             "bank", "rbi", "reserve bank", "police", "cyber", "cyber crime",
             "fraud department", "officer", "bank se bol raha", "bank se bol rahi",
-            "bank se call", "rbi se", "police se", "cyber cell se", "customer care se"
+            "bank se call", "rbi se", "police se", "cyber cell se", "customer care se",
+            "sbi", "icici", "hdfc", "axis", "pnb", "bob", "boi", "speaking from"
         ], 16, "Institution impersonation language"),
         ("urgency", [
             "immediately", "right now", "urgent", "hurry", "quickly", "block", "blocked",
             "expire", "abhi", "turant", "jaldi", "fatafat", "abhi ke abhi",
-            "account band", "account bandh", "account block ho jayega", "aaj hi"
+            "account band", "account bandh", "account block ho jayega", "aaj hi",
+            "now", "asap", "at once", "don't delay"
         ], 18, "Artificial urgency"),
         ("payment_pressure", [
             "transfer", "send money", "pay", "upi", "paise bhejo", "paise transfer",
             "payment karo", "payment kar do", "money transfer", "secure account",
-            "safe account", "account mein bhejo", "is account mein", "upi karo"
+            "safe account", "account mein bhejo", "is account mein", "upi karo",
+            "need", "rupees", "amount", "send rupees", "shop"
         ], 20, "Payment pressure"),
         ("threat", [
             "arrest", "case", "legal action", "penalty", "account will be blocked",
@@ -416,6 +473,9 @@ def local_voice_analysis(text: str, language: str = "en-IN") -> dict[str, Any]:
     if {"IMPERSONATION", "URGENCY"}.issubset(codes):
         score += 10
         signals.append({"code": "AUTHORITY_URGENCY_COMBINATION", "title": "Authority impersonation combined with urgency", "detail": "The caller uses institutional authority together with time pressure.", "severity": "HIGH"})
+    if {"IMPERSONATION", "CREDENTIAL_EXTRACTION"}.issubset(codes):
+        score += 22
+        signals.append({"code": "IMPERSONATION_CREDENTIAL_COMBINATION", "title": "Bank impersonation requesting sensitive credentials", "detail": "The caller impersonates a financial institution and requests OTP, PIN, or other sensitive information.", "severity": "HIGH"})
     score = clamp(score)
     return {"risk_score": score, "risk_level": level(score), "recommended_action": action(score), "signals": signals, "language": language or "en-IN", "guard_status": "ACTIVE"}
 
@@ -647,3 +707,14 @@ def message_risk(req: MessageRequest):
 def beneficiary_analyze(req: BeneficiaryRequest):
     risk = 5 if req.historical_count >= 3 and not req.is_new else 12 if req.is_new else 3
     return {"beneficiary_id": req.beneficiary_id, "network_risk": risk, "risk_level": level(risk), "historical_count": req.historical_count}
+
+
+@app.post("/api/v1/risk/text-analysis")
+def text_risk_analysis(req: MessageRequest):
+    result = gemini_text_risk_analysis(req.text)
+    if result is None:
+        return {
+            "available": False,
+            "message": "Gemini is not configured or the analysis request failed.",
+        }
+    return {"available": True, **result}
