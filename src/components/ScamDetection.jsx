@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
+import axios from "axios";
 import {
   ArrowLeft,
   Search,
@@ -23,37 +24,14 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-// Reuses the existing AI_BACKEND Gemini integration (same service/endpoint
-// already used by the Dashboard's Risk Analysis page) as a supplementary
-// semantic layer on top of this component's own rule engine below. The
-// rule engine remains authoritative and unchanged; Gemini's contribution
-// is additive-only and generic (driven entirely by its own returned
-// score/level/signals -- never keyed to any specific example phrase).
-const AI_BACKEND_URL =
-  import.meta.env.VITE_FRAUDSHIELD_AI_URL || "http://localhost:8000";
-
-function combineWithGemini(ruleScore, gemini) {
-  const bonus = Math.round((gemini.score || 0) * 0.35);
-  let combined = Math.min(100, ruleScore + bonus);
-  if (gemini.score >= 85) {
-    combined = Math.max(combined, gemini.score);
-  }
-  return Math.min(100, combined);
-}
-
-function riskLevelForScore(score) {
-  if (score >= 70) return "CRITICAL";
-  if (score >= 45) return "HIGH";
-  if (score >= 25) return "MEDIUM";
-  return "LOW";
-}
+const MESSAGE_CHECK_URL = "http://localhost:5000/api/message/check";
 
 export default function ScamDetection({ onBack }) {
   const [input, setInput] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [activeExample, setActiveExample] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const geminiRequestIdRef = useRef(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
 
   const examples = [
     {
@@ -89,280 +67,130 @@ export default function ScamDetection({ onBack }) {
         "Your refund of ₹18,500 is pending. Please confirm your UPI PIN to receive the refund. Click the link below to complete verification.",
     },
   ];
-
-  const analyzeScam = async (text = input) => {
-    if (!text.trim()) return;
-
-    const normalized = text.toLowerCase();
-
-    const signals = [];
-
-    const hasUrgency =
-      /urgent|immediately|now|today|within|hurry|limited|expire|expired|last chance|2 hours|minutes/.test(
-        normalized
-      );
-
-    const hasImpersonation =
-      /bank|police|cyber|government|income tax|aadhaar|rbi|official|officer|customer care|kyc/.test(
-        normalized
-      );
-
-    const asksPayment =
-      /transfer|pay|payment|invest|deposit|send|₹|rs\.?|upi|money|amount/.test(
-        normalized
-      );
-
-    const asksCredentials =
-      /otp|pin|password|cvv|card number|upi pin|verification code|login/.test(
-        normalized
-      );
-
-    const hasLink =
-      /https?:\/\/|www\.|\.com|\.in|\.net|\.org/.test(normalized);
-
-    const emotionalPressure =
-      /blocked|arrest|illegal|police|case|penalty|fine|account will|lose|danger|suspended/.test(
-        normalized
-      );
-
-    const guaranteedReturns =
-      /guaranteed|guarantee|profit|returns|double|₹50,000|earn/.test(
-        normalized
-      );
-
-    const remoteAccess =
-      /remote|screen share|anydesk|teamviewer|quick support|access your phone/.test(
-        normalized
-      );
-
-    const urgencyScore = hasUrgency ? 18 : 0;
-    const impersonationScore = hasImpersonation ? 16 : 0;
-    const paymentScore = asksPayment ? 18 : 0;
-    const credentialScore = asksCredentials ? 20 : 0;
-    const linkScore = hasLink ? 12 : 0;
-    const emotionalScore = emotionalPressure ? 12 : 0;
-    const investmentScore = guaranteedReturns ? 10 : 0;
-    const remoteScore = remoteAccess ? 18 : 0;
-
-    let score =
-      urgencyScore +
-      impersonationScore +
-      paymentScore +
-      credentialScore +
-      linkScore +
-      emotionalScore +
-      investmentScore +
-      remoteScore;
-
-    score = Math.min(score, 100);
-
-    if (hasUrgency) {
-      signals.push({
-        title: "Artificial urgency",
-        description:
-          "The message is trying to make you act before you have time to verify it.",
-        icon: <Zap size={15} />,
-        severity: "HIGH",
-      });
-    }
-
-    if (hasImpersonation) {
-      signals.push({
-        title: "Authority impersonation",
-        description:
-          "The sender uses trusted institutions or official-sounding language to create credibility.",
-        icon: <UserX size={15} />,
-        severity: "HIGH",
-      });
-    }
-
-    if (asksPayment) {
-      signals.push({
-        title: "Financial pressure",
-        description:
-          "The message attempts to move you toward sending or investing money.",
-        icon: <IndianRupee size={15} />,
-        severity: "HIGH",
-      });
-    }
-
-    if (asksCredentials) {
-      signals.push({
-        title: "Credential extraction",
-        description:
-          "The message appears to request sensitive authentication information.",
-        icon: <Lock size={15} />,
-        severity: "CRITICAL",
-      });
-    }
-
-    if (hasLink) {
-      signals.push({
-        title: "External link detected",
-        description:
-          "A link is present and should be independently verified before opening.",
-        icon: <Link2 size={15} />,
-        severity: "MEDIUM",
-      });
-    }
-
-    if (emotionalPressure) {
-      signals.push({
-        title: "Fear-based manipulation",
-        description:
-          "Threats involving account blocking, arrest, penalties or legal action are being used to create panic.",
-        icon: <AlertTriangle size={15} />,
-        severity: "HIGH",
-      });
-    }
-
-    if (guaranteedReturns) {
-      signals.push({
-        title: "Unrealistic financial promise",
-        description:
-          "Guaranteed or unusually high returns are a common social-engineering signal.",
-        icon: <IndianRupee size={15} />,
-        severity: "HIGH",
-      });
-    }
-
-    if (remoteAccess) {
-      signals.push({
-        title: "Remote-access request",
-        description:
-          "The content attempts to obtain control or visibility into the user's device.",
-        icon: <Smartphone size={15} />,
-        severity: "CRITICAL",
-      });
-    }
-
-    let scamType = "Suspicious Communication";
-    let explanation =
-      "The content contains patterns associated with social engineering.";
-
-    if (
-      /kyc|aadhaar|account will be blocked|account.*suspend/.test(normalized)
-    ) {
-      scamType = "KYC / Account Suspension Scam";
-      explanation =
-        "The sender appears to use account-related fear and urgency to push the victim toward a fraudulent verification flow.";
-    } else if (
-      /arrest|police|illegal|case|cyber crime|cybercrime/.test(normalized)
-    ) {
-      scamType = "Digital Arrest / Authority Scam";
-      explanation =
-        "The message attempts to create fear by impersonating authorities and suggesting legal consequences.";
-    } else if (
-      /invest|guaranteed|returns|profit|double/.test(normalized)
-    ) {
-      scamType = "Investment Scam";
-      explanation =
-        "The content uses financial rewards and urgency to encourage a risky payment or investment.";
-    } else if (
-      /refund|cashback|refund.*upi|upi.*refund/.test(normalized)
-    ) {
-      scamType = "Refund Scam";
-      explanation =
-        "The message uses a supposed refund to create a reason for requesting payment credentials or a transaction.";
-    } else if (/job|salary|hiring|vacancy|work from home/.test(normalized)) {
-      scamType = "Job Scam";
-      explanation =
-        "The content appears to use employment or earning opportunities as a reason to request money or information.";
-    }
-
-    let riskLevel = "LOW";
-
-    if (score >= 70) {
-      riskLevel = "CRITICAL";
-    } else if (score >= 45) {
-      riskLevel = "HIGH";
-    } else if (score >= 25) {
-      riskLevel = "MEDIUM";
-    }
-
-    let recommendation =
-      "Do not act on the message until the sender and request are independently verified.";
-
-    if (riskLevel === "CRITICAL") {
-      recommendation =
-        "Do not pay, share OTP/PIN/passwords, open the link, or give anyone remote access. Verify through the official institution's app or website.";
-    } else if (riskLevel === "HIGH") {
-      recommendation =
-        "Pause before responding. Verify the sender independently and avoid making any payment or sharing sensitive information.";
-    } else if (riskLevel === "MEDIUM") {
-      recommendation =
-        "Treat the message cautiously. Verify the claim using an official source before taking action.";
-    }
-
-    const manipulation = {
-      urgency: hasUrgency ? 88 : 12,
-      authority: hasImpersonation ? 82 : 10,
-      money: asksPayment ? 91 : 8,
-      fear: emotionalPressure ? 87 : 9,
-      trust: hasImpersonation ? 74 : 20,
-    };
-
-    const ruleResult = {
-      score,
-      riskLevel,
-      scamType,
-      explanation,
-      recommendation,
-      signals,
-      manipulation,
-      text,
-    };
-
-    // Gemini is fetched and merged in BEFORE anything is shown, so the UI
-    // never flashes the rule-only score and then visibly jumps once the
-    // semantic supplement arrives -- only the final, combined verdict is
-    // ever rendered (falls back to the rule-only result if Gemini/
-    // AI_BACKEND is unavailable).
-    const requestId = ++geminiRequestIdRef.current;
-    setAnalysis(null);
-    setIsAnalyzing(true);
-
-    let finalResult = ruleResult;
-    try {
-      const response = await fetch(`${AI_BACKEND_URL}/api/v1/risk/text-analysis`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const data = response.ok ? await response.json() : null;
-
-      if (data && data.available) {
-        const geminiSignals = (data.signals || []).map((s) => ({
-          title: `${String(s.type || "signal").replace(/_/g, " ")} (Gemini)`,
-          description: s.detail || "Detected by Gemini semantic analysis.",
-          icon: <Brain size={15} />,
-          severity:
-            data.level === "CRITICAL"
-              ? "CRITICAL"
-              : data.level === "HIGH"
-              ? "HIGH"
-              : "MEDIUM",
-        }));
-
-        const combinedScore = combineWithGemini(ruleResult.score, data);
-
-        finalResult = {
-          ...ruleResult,
-          score: combinedScore,
-          riskLevel: riskLevelForScore(combinedScore),
-          signals: [...ruleResult.signals, ...geminiSignals],
-        };
-      }
-    } catch {
-      // Gemini/AI_BACKEND unavailable: fall back to the rule-only result.
-    }
-
-    if (requestId === geminiRequestIdRef.current) {
-      setAnalysis(finalResult);
-      setIsAnalyzing(false);
-    }
+  const INDICATOR_DISPLAY = {
+    URGENCY: { icon: <Zap size={15} />, severity: "HIGH", title: "Artificial urgency" },
+    THREAT: { icon: <AlertTriangle size={15} />, severity: "HIGH", title: "Fear-based manipulation" },
+    IMPERSONATION: { icon: <UserX size={15} />, severity: "HIGH", title: "Authority impersonation" },
+    CREDENTIAL_REQUEST: { icon: <Lock size={15} />, severity: "CRITICAL", title: "Credential extraction" },
+    PAYMENT_REQUEST: { icon: <IndianRupee size={15} />, severity: "HIGH", title: "Financial pressure" },
+    LINK_PRESENT: { icon: <Link2 size={15} />, severity: "MEDIUM", title: "External link detected" },
   };
 
+  const deriveScamType = (text) => {
+    const normalized = text.toLowerCase();
+
+    if (/kyc|aadhaar|account will be blocked|account.*suspend/.test(normalized)) {
+      return {
+        scamType: "KYC / Account Suspension Scam",
+        explanation:
+          "The sender appears to use account-related fear and urgency to push the victim toward a fraudulent verification flow.",
+      };
+    }
+    if (/arrest|police|illegal|case|cyber crime|cybercrime/.test(normalized)) {
+      return {
+        scamType: "Digital Arrest / Authority Scam",
+        explanation:
+          "The message attempts to create fear by impersonating authorities and suggesting legal consequences.",
+      };
+    }
+    if (/invest|guaranteed|returns|profit|double/.test(normalized)) {
+      return {
+        scamType: "Investment Scam",
+        explanation:
+          "The content uses financial rewards and urgency to encourage a risky payment or investment.",
+      };
+    }
+    if (/refund|cashback|refund.*upi|upi.*refund/.test(normalized)) {
+      return {
+        scamType: "Refund Scam",
+        explanation:
+          "The message uses a supposed refund to create a reason for requesting payment credentials or a transaction.",
+      };
+    }
+    if (/job|salary|hiring|vacancy|work from home/.test(normalized)) {
+      return {
+        scamType: "Job Scam",
+        explanation:
+          "The content appears to use employment or earning opportunities as a reason to request money or information.",
+      };
+    }
+    return {
+      scamType: "Suspicious Communication",
+      explanation: "The content contains patterns associated with social engineering.",
+    };
+  };
+
+  const deriveRecommendation = (riskLevel) => {
+    if (riskLevel === "HIGH") {
+      return "Do not pay, share OTP/PIN/passwords, open the link, or give anyone remote access. Verify through the official institution's app or website.";
+    }
+    if (riskLevel === "MEDIUM") {
+      return "Pause before responding. Verify the sender independently and avoid making any payment or sharing sensitive information.";
+    }
+    return "Treat the message cautiously and verify the claim using an official source before taking action.";
+  };
+
+  const deriveManipulation = (indicatorTypes) => ({
+    urgency: indicatorTypes.has("URGENCY") ? 88 : 12,
+    authority: indicatorTypes.has("IMPERSONATION") ? 82 : 10,
+    money: indicatorTypes.has("PAYMENT_REQUEST") ? 91 : 8,
+    fear: indicatorTypes.has("THREAT") ? 87 : 9,
+    trust: indicatorTypes.has("IMPERSONATION") ? 74 : 20,
+  });
+
+  const analyzeScam = async (text = input) => {
+    if (!text.trim()) {
+      setErrorMessage("Please enter a message to analyze.");
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsLoading(true);
+    setAnalysis(null);
+
+    try {
+      const response = await axios.post(MESSAGE_CHECK_URL, { message: text });
+      const { score, riskLevel, indicators } = response.data;
+
+      const signals = indicators.map((indicator) => {
+        const display = INDICATOR_DISPLAY[indicator.type] || {
+          icon: <AlertTriangle size={15} />,
+          severity: "MEDIUM",
+          title: indicator.type,
+        };
+        return {
+          title: display.title,
+          description: indicator.explanation,
+          icon: display.icon,
+          severity: display.severity,
+        };
+      });
+
+      const { scamType, explanation } = deriveScamType(text);
+      const recommendation = deriveRecommendation(riskLevel);
+      const manipulation = deriveManipulation(
+        new Set(indicators.map((i) => i.type))
+      );
+
+      setAnalysis({
+        score,
+        riskLevel,
+        scamType,
+        explanation,
+        recommendation,
+        signals,
+        manipulation,
+        text,
+      });
+    } catch (error) {
+      console.error("MESSAGE CHECK REQUEST FAILED:", error);
+      setErrorMessage(
+        "Couldn't reach the fraud detection service. Please check your connection and try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
   const loadExample = (example) => {
     setInput(example.text);
     setActiveExample(example.id);
@@ -373,6 +201,7 @@ export default function ScamDetection({ onBack }) {
     setInput("");
     setAnalysis(null);
     setActiveExample(null);
+    setErrorMessage(null);
   };
 
   const riskConfig = useMemo(() => {
@@ -566,6 +395,7 @@ export default function ScamDetection({ onBack }) {
               onChange={(e) => {
                 setInput(e.target.value);
                 setAnalysis(null);
+                setErrorMessage(null);
               }}
               placeholder="Example: Your bank account will be blocked today. Verify your KYC immediately..."
               style={{
@@ -605,14 +435,14 @@ export default function ScamDetection({ onBack }) {
 
               <button
                 onClick={() => analyzeScam()}
-                disabled={!input.trim() || isAnalyzing}
+                disabled={!input.trim() || isLoading}
                 style={{
                   border: "none",
                   borderRadius: "9px",
-                  background: input.trim() && !isAnalyzing ? "#3b6fe0" : "#dfe3eb",
+                  background: input.trim() && !isLoading ? "#3b6fe0" : "#dfe3eb",
                   color: "white",
                   padding: "10px 17px",
-                  cursor: input.trim() && !isAnalyzing ? "pointer" : "not-allowed",
+                  cursor: input.trim() && !isLoading ? "pointer" : "not-allowed",
                   fontSize: "11px",
                   fontWeight: 800,
                   display: "flex",
@@ -621,13 +451,54 @@ export default function ScamDetection({ onBack }) {
                 }}
               >
                 <Search size={14} />
-                {isAnalyzing ? "Analyzing..." : "Analyze Scam"}
+                {isLoading ? "Analyzing..." : "Analyze Scam"}
               </button>
             </div>
           </div>
 
+          {/* ERROR STATE */}
+          {errorMessage && (
+            <div
+              style={{
+                background: "#fff0f1",
+                border: "1px solid #f3c6c8",
+                borderRadius: "12px",
+                padding: "14px 16px",
+                marginBottom: "18px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                fontSize: "11px",
+                color: "#c9363d",
+                fontWeight: 700,
+              }}
+            >
+              <XCircle size={16} />
+              {errorMessage}
+            </div>
+          )}
+
+          {/* LOADING STATE */}
+          {isLoading && (
+            <div
+              style={{
+                background: "white",
+                border: "1px solid #e7e9ef",
+                borderRadius: "16px",
+                padding: "24px",
+                marginBottom: "18px",
+                textAlign: "center",
+                fontSize: "12px",
+                color: "#858997",
+                fontWeight: 700,
+              }}
+            >
+              Checking message against FraudShield's risk engine...
+            </div>
+          )}
+
           {/* ANALYSIS RESULT */}
-          {analysis && riskConfig && (
+          {!isLoading && analysis && riskConfig && (
             <div
               style={{
                 background: "white",
@@ -820,14 +691,14 @@ export default function ScamDetection({ onBack }) {
                             signal.severity === "CRITICAL"
                               ? "#fff0f1"
                               : signal.severity === "HIGH"
-                              ? "#fff4e6"
-                              : "#eef3ff",
+                                ? "#fff4e6"
+                                : "#eef3ff",
                           color:
                             signal.severity === "CRITICAL"
                               ? "#e5484d"
                               : signal.severity === "HIGH"
-                              ? "#d88400"
-                              : "#3b6fe0",
+                                ? "#d88400"
+                                : "#3b6fe0",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -862,8 +733,8 @@ export default function ScamDetection({ onBack }) {
                                 signal.severity === "CRITICAL"
                                   ? "#e5484d"
                                   : signal.severity === "HIGH"
-                                  ? "#d88400"
-                                  : "#3b6fe0",
+                                    ? "#d88400"
+                                    : "#3b6fe0",
                             }}
                           >
                             {signal.severity}
@@ -1195,8 +1066,8 @@ function Meter({ label, value }) {
     value >= 75
       ? "#e5484d"
       : value >= 45
-      ? "#d88400"
-      : "#1fa971";
+        ? "#d88400"
+        : "#1fa971";
 
   return (
     <div style={{ marginBottom: "14px" }}>
