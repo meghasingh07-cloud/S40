@@ -1,12 +1,133 @@
 import React, { useState } from "react";
 import "./FraudIntelligence.css";
 
+const SIMULATED_THREATS = [
+  {
+    id: "upi-scam-001",
+    type: "UPI Refund Scam",
+    pattern: "Fake refund requests and payment collection tricks",
+    riskLevel: "HIGH",
+    matchKeywords: ["upi", "refund", "payment", "@upi", "suspicious@upi", "fraudster@okhdfcbank"],
+    entity: "fraudster@okhdfcbank",
+    reports: 234,
+    channels: ["WhatsApp", "SMS"],
+    lastSeen: "2 hours ago",
+    patterns: [
+      "Requests to confirm UPI transaction via link",
+      "Promises immediate refund for non-existent purchase",
+      "Asks for OTP or payment confirmation"
+    ]
+  },
+  {
+    id: "kyc-phish-001",
+    type: "Fake KYC Update",
+    pattern: "Fraudulent links requesting account verification",
+    riskLevel: "CRITICAL",
+    matchKeywords: ["kyc", "verification", "banking", "account", "link", "url", "9876543210"],
+    entity: "+91 9876543210",
+    reports: 189,
+    channels: ["Email", "WhatsApp"],
+    lastSeen: "1 hour ago",
+    patterns: [
+      "Shortened URL mimicking bank login page",
+      "Claims account will be blocked without verification",
+      "Requests personal details and banking credentials"
+    ]
+  },
+  {
+    id: "arrest-scam-001",
+    type: "Digital Arrest Scam",
+    pattern: "Fake police/government officials demanding money",
+    riskLevel: "CRITICAL",
+    matchKeywords: ["police", "arrest", "government", "+91", "phone", "call", "8765432109"],
+    entity: "+91 8765432109",
+    reports: 421,
+    channels: ["Phone Calls", "WhatsApp"],
+    lastSeen: "30 minutes ago",
+    patterns: [
+      "Impersonates police or government agency",
+      "Claims arrest warrant or legal case",
+      "Demands immediate payment for bail/fine"
+    ]
+  },
+  {
+    id: "investment-scam-001",
+    type: "Investment Scam",
+    pattern: "Fake trading platforms and guaranteed returns",
+    riskLevel: "HIGH",
+    matchKeywords: ["investment", "trading", "return", "guarantee", "profit", "stock", "trader@secure-invest"],
+    entity: "trader@secure-invest",
+    reports: 156,
+    channels: ["WhatsApp", "Email"],
+    lastSeen: "3 hours ago",
+    patterns: [
+      "Promises guaranteed high returns (50-100% monthly)",
+      "Uses fake trading platform screenshots",
+      "Requests deposit for membership or access"
+    ]
+  },
+  {
+    id: "cashback-scam-001",
+    type: "Fake Cashback Campaign",
+    pattern: "Fraudulent reward links and fake account numbers",
+    riskLevel: "MEDIUM",
+    matchKeywords: ["cashback", "reward", "prize", "voucher", "offer", "9012345678"],
+    entity: "+91 9012345678 | rewards.scam@icici",
+    reports: 98,
+    channels: ["WhatsApp", "Email"],
+    lastSeen: "38 minutes ago",
+    patterns: [
+      "Offers unrealistic cashback (50-200% back)",
+      "Requests payment or account transfer to claim",
+      "Links lead to credential-stealing pages"
+    ]
+  },
+  {
+    id: "bank-support-001",
+    type: "Fake Banking Support",
+    pattern: "Impersonated customer support agents",
+    riskLevel: "HIGH",
+    matchKeywords: ["bank", "support", "customer care", "agent", "icici", "sbi", "hdfc", "9898765432"],
+    entity: "+91 9898765432 (claims to be ICICI)",
+    reports: 267,
+    channels: ["Phone Calls", "WhatsApp"],
+    lastSeen: "12 minutes ago",
+    patterns: [
+      "Poses as bank customer support agent",
+      "Requests OTP, CVV, or banking credentials",
+      "Claims unusual account activity needs verification"
+    ]
+  }
+];
+
+const getRiskColor = (level) => {
+  switch (level) {
+    case "CRITICAL": return "#e5484d";
+    case "HIGH": return "#f5a524";
+    case "MEDIUM": return "#f59e0b";
+    default: return "#1fa971";
+  }
+};
+
+const searchThreats = (query) => {
+  if (!query.trim()) return null;
+  const lowerQuery = query.toLowerCase();
+  return SIMULATED_THREATS.find(threat =>
+    threat.matchKeywords.some(kw => lowerQuery.includes(kw)) ||
+    threat.type.toLowerCase().includes(lowerQuery) ||
+    threat.pattern.toLowerCase().includes(lowerQuery)
+  );
+};
+
 export default function FraudIntelligence({ onBack }) {
   const [search, setSearch] = useState("");
   const [searched, setSearched] = useState(false);
+  const [searchResult, setSearchResult] = useState(null);
 
   const handleSearch = () => {
     if (search.trim()) {
+      const result = searchThreats(search);
+      setSearchResult(result);
       setSearched(true);
     }
   };
@@ -72,23 +193,48 @@ export default function FraudIntelligence({ onBack }) {
         </div>
 
         {searched && (
-          <div className="fi-search-result">
+          <div className="fi-search-result" style={{ borderLeftColor: searchResult ? getRiskColor(searchResult.riskLevel) : "#f59e0b" }}>
 
             <div className="fi-result-icon">
-              ⚠️
+              {searchResult ? "⚠️" : "❌"}
             </div>
 
-            <div>
-              <strong>Potentially Suspicious Signal Detected</strong>
-
-              <p>
-                The submitted indicator matches patterns associated with
-                reported fraud activity. Verify the source before interacting.
-              </p>
+            <div style={{ flex: 1 }}>
+              {searchResult ? (
+                <>
+                  <strong>{searchResult.type}</strong>
+                  <p>{searchResult.pattern}</p>
+                  <div style={{ marginTop: "8px", padding: "8px 12px", background: "rgba(229, 72, 77, 0.08)", borderRadius: "6px", marginBottom: "8px", fontSize: "12px", fontWeight: "600", color: "#1c2033" }}>
+                    🔴 Entity: {searchResult.entity}
+                  </div>
+                  <div style={{ marginTop: "10px", fontSize: "12px", color: "#6b7189" }}>
+                    <div style={{ marginBottom: "6px" }}>
+                      <strong>📊 Reports:</strong> {searchResult.reports} incidents | <strong>Last seen:</strong> {searchResult.lastSeen}
+                    </div>
+                    <div style={{ marginBottom: "6px" }}>
+                      <strong>📡 Channels:</strong> {searchResult.channels.join(", ")}
+                    </div>
+                    <div>
+                      <strong>🔍 Common patterns:</strong>
+                      <ul style={{ margin: "4px 0 0 16px", paddingLeft: 0 }}>
+                        {searchResult.patterns.map((p, i) => <li key={i} style={{ fontSize: "11px" }}>{p}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong>No Known Threat Detected</strong>
+                  <p>
+                    This entity does not match any known fraud patterns in our intelligence database.
+                    However, stay vigilant and verify suspicious requests independently.
+                  </p>
+                </>
+              )}
             </div>
 
-            <span className="fi-high-badge">
-              HIGH RISK
+            <span className="fi-high-badge" style={{ background: searchResult ? getRiskColor(searchResult.riskLevel) : "#1fa971" }}>
+              {searchResult ? searchResult.riskLevel : "SAFE"}
             </span>
 
           </div>

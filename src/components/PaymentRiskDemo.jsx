@@ -22,17 +22,31 @@ import {
   BrainCircuit
 } from 'lucide-react';
 import GuardianPinModal from './GuardianPinModal';
-
+// Reuses the existing AI_BACKEND Gemini integration (same service/endpoint
+// already used by the Dashboard's Risk Analysis page) as a supplementary
+// semantic layer on top of this component's own rule engine. The rule
+// engine remains authoritative and unchanged; Gemini's contribution is
+// additive-only and generic (driven entirely by its own returned
+// score/level/signals for whatever text is supplied -- never keyed to any
+// specific example phrase).
+const AI_BACKEND_URL =
+  import.meta.env.VITE_FRAUDSHIELD_AI_URL || 'http://localhost:8000';
+function combineWithGemini(ruleScore, gemini) {
+  const bonus = Math.round((gemini.score || 0) * 0.35);
+  let combined = Math.min(98, ruleScore + bonus);
+  if (gemini.score >= 85) {
+    combined = Math.max(combined, gemini.score);
+  }
+  return Math.min(98, combined);
+}
 export default function PaymentRiskDemo({ onBack }) {
   const [step, setStep] = useState(1);
-
   // -----------------------------
   // PAYMENT FORM
   // -----------------------------
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-
   // -----------------------------
   // CHILD PROTECTION & PIN
   // -----------------------------
@@ -41,7 +55,6 @@ export default function PaymentRiskDemo({ onBack }) {
   const [isGamingPayment, setIsGamingPayment] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingPinAction, setPendingPinAction] = useState(null);
-
   // -----------------------------
   // NLP / RISK STATE
   // -----------------------------
@@ -51,46 +64,76 @@ export default function PaymentRiskDemo({ onBack }) {
   const [riskScore, setRiskScore] = useState(8);
   const [intentCategory, setIntentCategory] = useState('Benign / Conversational');
   const [activeScamType, setActiveScamType] = useState(null);
-
   const recognitionRef = useRef(null);
-
+  const geminiRequestIdRef = useRef(0);
+  // -----------------------------
+  // GEMINI SEMANTIC SUPPLEMENT (additive only; rule engine above stays
+  // the source of truth). Debounced on the same `transcript` text the
+  // rule engine already reacts to, via the existing AI_BACKEND service.
+  // -----------------------------
+  useEffect(() => {
+    const trimmed = transcript.trim();
+    if (!trimmed) return undefined;
+    const requestId = ++geminiRequestIdRef.current;
+    const timer = setTimeout(() => {
+      fetch(`${AI_BACKEND_URL}/api/v1/risk/text-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: trimmed }),
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (!data || !data.available) return;
+          if (requestId !== geminiRequestIdRef.current) return; // superseded by newer text
+          const geminiVectors = (data.signals || []).map((s) => ({
+            type: `gemini_${s.type || 'signal'}`,
+            title: `${String(s.type || 'signal').replace(/_/g, ' ')} (Gemini)`,
+            detail: s.detail || 'Detected by Gemini semantic analysis.',
+            severity:
+              data.level === 'CRITICAL' || data.level === 'HIGH'
+                ? 'critical'
+                : 'warning',
+          }));
+          if (geminiVectors.length > 0) {
+            setDetectedVectors((prev) => [...prev, ...geminiVectors]);
+          }
+          setRiskScore((prev) => combineWithGemini(prev, data));
+        })
+        .catch(() => {
+          // Gemini/AI_BACKEND unavailable: keep the existing rule-based result as-is.
+        });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [transcript]);
   const isFormValid =
     recipient.trim() !== '' &&
     amount.trim() !== '' &&
     Number(amount) > 0;
-
   const formattedAmount = Number(amount || 0).toLocaleString('en-IN');
-
   // -----------------------------
   // GAMING / CHILD PAYMENT DETECTOR
   // -----------------------------
   const detectGamingPayment = (recipientValue, noteValue) => {
     const combined = `${recipientValue} ${noteValue}`.toLowerCase();
-
     const gamingKeywords =
       /(roblox|free fire|freefire|bgmi|pubg|fortnite|minecraft|steam|playstation|xbox|nintendo|game|gaming|gems|coins|diamonds|skins|battle pass|game pass|in[- ]app purchase|in app purchase|virtual currency)/i;
-
     const childKeywords =
       /(child|kid|son|daughter|minor|school student|my boy|my girl|my son|my daughter)/i;
-
     return {
       gaming: gamingKeywords.test(combined),
       child: childKeywords.test(combined)
     };
   };
-
   // -----------------------------
   // PAYMENT CONTEXT CHECK
   // -----------------------------
   useEffect(() => {
     const result = detectGamingPayment(recipient, note);
     setIsGamingPayment(result.gaming);
-
     if (childProtectionEnabled && result.gaming) {
       setDetectedVectors((prev) => {
         const exists = prev.some((v) => v.type === 'child_payment');
         if (exists) return prev;
-
         return [
           ...prev,
           {
@@ -104,14 +147,12 @@ export default function PaymentRiskDemo({ onBack }) {
       });
     }
   }, [recipient, note, childProtectionEnabled]);
-
   // -----------------------------
   // BEHAVIORAL NLP ENGINE
   // -----------------------------
   const evaluateBehavioralRisk = (text) => {
     if (!text || text.trim() === '') {
       const gamingResult = detectGamingPayment(recipient, note);
-
       if (childProtectionEnabled && gamingResult.gaming) {
         setDetectedVectors([
           {
@@ -122,36 +163,33 @@ export default function PaymentRiskDemo({ onBack }) {
             severity: 'warning'
           }
         ]);
-
         setRiskScore(35);
         setIntentCategory('Gaming / Child Payment Review');
         setActiveScamType('child_payment');
         return;
       }
-
       setDetectedVectors([]);
       setRiskScore(8);
       setIntentCategory('Benign / Conversational');
       setActiveScamType(null);
       return;
     }
-
     const raw = text.toLowerCase();
     const vectors = [];
     let score = 8;
     let primaryIntent = 'Benign Conversation';
     let identifiedScam = null;
-
     const isSafeNarration =
       /(did not (share|give|send|show)|checked (myself|my app|statement)|called (the )?official (website|number|customer care)|verified (on|via|from) (the )?app|no problem|happy to wait|give it some time)/i.test(
         raw
       );
-
     // 1. OTP / PIN / CVV THEFT
     const isDemandingCredentials =
-      /(tell me|give me|read out|share with me|send me|what is).*(your )?(otp|upi pin|pin|password|passcode|cvv|secret code|6-digit|4-digit)/i;
-
-    if (isDemandingCredentials.test(raw) && !isSafeNarration) {
+      /(tell me|give me|read out|share( with)? me|send me|what is).*(your )?(otp|upi pin|pin|password|passcode|cvv|secret code|6-digit|4-digit)/i;
+    if (
+      isDemandingCredentials.test(raw) &&
+      !isSafeNarration
+    ) {
       vectors.push({
         type: 'otp_theft',
         title: 'Direct Credential Extraction Request',
@@ -163,11 +201,37 @@ export default function PaymentRiskDemo({ onBack }) {
       identifiedScam = 'otp_theft';
       primaryIntent = 'Credential Extraction Trap';
     }
-
+    // -----------------------------
+    // 1B. BANK/INSTITUTION IMPERSONATION MONEY REQUEST
+    // -----------------------------
+    const isMoneyDemand =
+      /(send me|transfer to me|give me|transfer)\s+(the\s+)?(money|cash|[₹$]?\s?\d[\d,]*)|need\s+(the\s+)?\d.{0,20}from you/i;
+    const hasInstitutionPretext =
+      /(bank|sbi|hdfc|icici|axis bank|kyc|verif|bank employee|bank official|account (will be|is|has been) (blocked|suspended))/i;
+    if (
+      isMoneyDemand.test(raw) &&
+      hasInstitutionPretext.test(raw) &&
+      !isSafeNarration
+    ) {
+      vectors.push({
+        type: 'bank_impersonation_payment_request',
+        title:
+          'Bank/Institution Impersonation Payment Request',
+        detail:
+          'Caller claims bank/institution authority and demands an outbound payment under a verification pretext.',
+        severity: 'critical'
+      });
+      score += 65;
+      if (!identifiedScam) {
+        identifiedScam = 'bank_impersonation_payment_request';
+      }
+      primaryIntent =
+        'Bank Impersonation Payment Request';
+    }
+    // -----------------------------
     // 2. COLLECT REQUEST / APP MANIPULATION
     const isDemandingAppAction =
       /(open your (upi|payment) (app|application) and (approve|accept)|click (on )?(the |this )?(link|apk|button) (to receive|to verify)|accept the (collect|payment) request)/i;
-
     if (isDemandingAppAction.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'collect_request',
@@ -180,11 +244,9 @@ export default function PaymentRiskDemo({ onBack }) {
       if (!identifiedScam) identifiedScam = 'collect_request';
       primaryIntent = 'Guided Execution Trap';
     }
-
     // 3. REFUND / FAKE CREDIT
     const isInboundMoneyClaim =
       /(i have (sent|transferred|credited|refunded) (the |some )?money to (your|you)|congratulations you (have )?won (a )?(lottery|prize|kbc|cashback))/i;
-
     if (isInboundMoneyClaim.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'refund',
@@ -197,11 +259,9 @@ export default function PaymentRiskDemo({ onBack }) {
       if (!identifiedScam) identifiedScam = 'refund';
       primaryIntent = 'Inbound Credit Deception';
     }
-
     // 4. AUTHORITY IMPERSONATION
     const isAuthorityThreat =
       /(calling from (the )?(cyber crime|police station|cbi office|customs department|narcotics bureau))|(you are under (digital )?arrest)|(arrest warrant issued against you)/i;
-
     if (isAuthorityThreat.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'authority',
@@ -214,11 +274,9 @@ export default function PaymentRiskDemo({ onBack }) {
       if (!identifiedScam) identifiedScam = 'authority';
       primaryIntent = 'Law Enforcement Coercion';
     }
-
     // 5. ISOLATION / COERCION
     const isIsolationCoercion =
       /(do not (hang up|disconnect|tell anyone))|(stay on (the )?call while you (pay|transfer))|(keep this strictly confidential)/i;
-
     if (isIsolationCoercion.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'isolation',
@@ -231,19 +289,15 @@ export default function PaymentRiskDemo({ onBack }) {
       if (!identifiedScam) identifiedScam = 'subtle_social_engineering';
       if (primaryIntent === 'Benign Conversation') primaryIntent = 'Supervised Isolation';
     }
-
     // 6. CHILD / GAMING PAYMENT
     const gamingResult = detectGamingPayment(recipient, note);
     const childNarrative =
       /(my (son|daughter|child|kid)|child wants|kid wants|for my child|for my son|for my daughter|needs gems|needs coins|wants gems|wants coins|game purchase|buy gems|buy coins|buy diamonds|game recharge)/i.test(
         raw
       );
-
     const gamingContext = gamingResult.gaming || childNarrative;
-
     if (childProtectionEnabled && gamingContext) {
       const numericAmount = Number(amount || 0);
-
       vectors.push({
         type: 'child_payment',
         title: 'Child / Gaming Payment Protection',
@@ -251,12 +305,10 @@ export default function PaymentRiskDemo({ onBack }) {
           'Payment context indicates a possible gaming or virtual-currency purchase. FraudShield recommends guardian verification before payment.',
         severity: numericAmount >= 2000 ? 'critical' : 'warning'
       });
-
       score += numericAmount >= 2000 ? 35 : 25;
       if (!identifiedScam) identifiedScam = 'child_payment';
       primaryIntent = 'Gaming / Child Payment Review';
     }
-
     // 7. HIGH VALUE GAMING PURCHASE
     if (childProtectionEnabled && gamingContext && Number(amount || 0) >= 5000) {
       vectors.push({
@@ -268,7 +320,6 @@ export default function PaymentRiskDemo({ onBack }) {
       score += 20;
       primaryIntent = 'High-Value Child Payment Review';
     }
-
     // SAFE NARRATION RESET
     if (
       isSafeNarration &&
@@ -281,13 +332,11 @@ export default function PaymentRiskDemo({ onBack }) {
         identifiedScam = null;
       }
     }
-
     setActiveScamType(identifiedScam);
     setDetectedVectors(vectors);
     setRiskScore(Math.min(98, score));
     setIntentCategory(vectors.length > 0 ? primaryIntent : 'Benign / Conversational');
   };
-
   // -----------------------------
   // RISK STATUS
   // -----------------------------
@@ -306,7 +355,6 @@ export default function PaymentRiskDemo({ onBack }) {
           '🛑 Freeze transaction immediately. Disconnect the call and verify independently.'
       };
     }
-
     if (score >= 30) {
       return {
         level: 'SUSPICIOUS',
@@ -321,7 +369,6 @@ export default function PaymentRiskDemo({ onBack }) {
           '⚠️ Verify the recipient and payment context before approving.'
       };
     }
-
     return {
       level: 'SAFE',
       title: `🟢 SAFE TRANSACTION VERDICT — ${score}% RISK`,
@@ -335,10 +382,8 @@ export default function PaymentRiskDemo({ onBack }) {
         '✅ Safe to proceed with normal PIN entry.'
     };
   };
-
   const currentStatus = getRiskStatus(riskScore);
   const isHighRisk = riskScore >= 70;
-
   // -----------------------------
   // SPEECH RECOGNITION
   // -----------------------------
@@ -346,16 +391,13 @@ export default function PaymentRiskDemo({ onBack }) {
     if (step === 2) {
       const SpeechRecognition =
         window.SpeechRecognition || window.webkitSpeechRecognition;
-
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
-
         recognition.onstart = () => setIsListening(true);
         recognition.onend = () => setIsListening(false);
-
         recognition.onresult = (event) => {
           let currentText = '';
           for (let i = 0; i < event.results.length; i++) {
@@ -364,9 +406,7 @@ export default function PaymentRiskDemo({ onBack }) {
           setTranscript(currentText);
           evaluateBehavioralRisk(currentText);
         };
-
         recognitionRef.current = recognition;
-
         try {
           recognition.start();
         } catch (err) {
@@ -378,14 +418,12 @@ export default function PaymentRiskDemo({ onBack }) {
         recognitionRef.current.stop();
       }
     }
-
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
     };
   }, [step]);
-
   const toggleMic = () => {
     if (!recognitionRef.current) return;
     if (isListening) {
@@ -400,7 +438,6 @@ export default function PaymentRiskDemo({ onBack }) {
       }
     }
   };
-
   // -----------------------------
   // PIN VERIFICATION HANDLERS
   // -----------------------------
@@ -412,12 +449,10 @@ export default function PaymentRiskDemo({ onBack }) {
       setGuardianApproval(false);
     }
   };
-
   const handleProtectedPay = (actionType) => {
     setPendingPinAction(actionType);
     setShowPinModal(true);
   };
-
   const onPinSuccess = () => {
     setShowPinModal(false);
     if (pendingPinAction === 'guardian_checkbox') {
@@ -429,7 +464,6 @@ export default function PaymentRiskDemo({ onBack }) {
     }
     setPendingPinAction(null);
   };
-
   // -----------------------------
   // STYLES
   // -----------------------------
@@ -476,10 +510,8 @@ export default function PaymentRiskDemo({ onBack }) {
       boxSizing: 'border-box'
     }
   };
-
   return (
     <div style={styles.container}>
-
       {/* BACK */}
       <button
         type="button"
@@ -495,7 +527,6 @@ export default function PaymentRiskDemo({ onBack }) {
         <ArrowLeft size={16} />
         {step > 1 ? 'Back to Previous Step' : 'Back to Dashboard'}
       </button>
-
       {/* PROGRESS */}
       <div
         style={{
@@ -536,7 +567,6 @@ export default function PaymentRiskDemo({ onBack }) {
             >
               {item.num}
             </div>
-
             <span
               style={{
                 fontSize: '13px',
@@ -546,7 +576,6 @@ export default function PaymentRiskDemo({ onBack }) {
             >
               {item.label}
             </span>
-
             {item.num !== 3 && (
               <div
                 style={{
@@ -561,7 +590,6 @@ export default function PaymentRiskDemo({ onBack }) {
           </div>
         ))}
       </div>
-
       {/* =====================================================
           STEP 1
       ===================================================== */}
@@ -590,7 +618,6 @@ export default function PaymentRiskDemo({ onBack }) {
                 Beneficiary, device, call stream and family context will be verified before authorization.
               </p>
             </div>
-
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -622,7 +649,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   placeholder="e.g. college_admin@oksbi, game-store@upi"
                 />
               </div>
-
               {/* AMOUNT */}
               <div style={{ marginBottom: '16px' }}>
                 <label
@@ -662,7 +688,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   />
                 </div>
               </div>
-
               {/* NOTE */}
               <div style={{ marginBottom: '16px' }}>
                 <label
@@ -685,7 +710,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   placeholder="e.g. Buy game gems for my child"
                 />
               </div>
-
               {/* CHILD PROTECTION */}
               <div
                 style={{
@@ -719,7 +743,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     >
                       <Baby size={20} color="#7c3aed" />
                     </div>
-
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: '800', color: '#4c1d95' }}>
                         Child Payment Protection
@@ -736,7 +759,6 @@ export default function PaymentRiskDemo({ onBack }) {
                       </div>
                     </div>
                   </div>
-
                   <button
                     type="button"
                     onClick={() => setChildProtectionEnabled(!childProtectionEnabled)}
@@ -765,7 +787,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     />
                   </button>
                 </div>
-
                 {childProtectionEnabled && (
                   <div
                     style={{
@@ -790,7 +811,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   </div>
                 )}
               </div>
-
               {/* PAYMENT BUTTON */}
               <button
                 type="submit"
@@ -817,7 +837,6 @@ export default function PaymentRiskDemo({ onBack }) {
               </button>
             </form>
           </div>
-
           {/* RIGHT INFORMATION */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={styles.card}>
@@ -838,7 +857,6 @@ export default function PaymentRiskDemo({ onBack }) {
                 FraudShield combines real-time NLP and behavioral signals into an explainable risk verdict before money moves.
               </p>
             </div>
-
             <div
               style={{
                 background: '#ffffff',
@@ -861,7 +879,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   Gaming Payment Protection
                 </span>
               </div>
-
               <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
                 {[
                   'Game gems & virtual currency',
@@ -888,7 +905,6 @@ export default function PaymentRiskDemo({ onBack }) {
           </div>
         </div>
       )}
-
       {/* =====================================================
           STEP 2
       ===================================================== */}
@@ -938,7 +954,6 @@ export default function PaymentRiskDemo({ onBack }) {
               />
               {currentStatus.statusLabel}
             </div>
-
             {/* CALL ICON */}
             <div
               style={{
@@ -955,15 +970,12 @@ export default function PaymentRiskDemo({ onBack }) {
             >
               <Volume2 size={28} color={currentStatus.theme} />
             </div>
-
             <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: '700' }}>
               Incoming Call: +91 98210-XXXXX
             </h3>
-
             <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>
               Target: <code>{recipient}</code> • Amount: <strong>₹{formattedAmount}</strong>
             </p>
-
             {/* NLP FRAME CLASSIFIER */}
             <div
               style={{
@@ -997,7 +1009,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   <Activity size={14} color={currentStatus.theme} />
                   Speech Intent Frame Classifier
                 </span>
-
                 <button
                   type="button"
                   onClick={toggleMic}
@@ -1019,7 +1030,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   {isListening ? 'Mic Active' : 'Enable Mic'}
                 </button>
               </div>
-
               <textarea
                 value={transcript}
                 onChange={(e) => {
@@ -1042,7 +1052,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   resize: 'none'
                 }}
               />
-
               <div
                 style={{
                   marginTop: '12px',
@@ -1065,7 +1074,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     Active Vectors: <strong style={{ color: currentStatus.border }}>{detectedVectors.length}</strong>
                   </span>
                 </div>
-
                 {detectedVectors.map((v, i) => (
                   <div
                     key={i}
@@ -1088,7 +1096,6 @@ export default function PaymentRiskDemo({ onBack }) {
                 ))}
               </div>
             </div>
-
             <button
               type="button"
               onClick={() => setStep(3)}
@@ -1118,7 +1125,6 @@ export default function PaymentRiskDemo({ onBack }) {
           </div>
         </div>
       )}
-
       {/* =====================================================
           STEP 3 (UNIFIED RISK ANALYSIS & VERDICT)
       ===================================================== */}
@@ -1156,7 +1162,6 @@ export default function PaymentRiskDemo({ onBack }) {
               ) : (
                 <ShieldCheck size={34} color="#10b981" />
               )}
-
               <div>
                 <h2
                   style={{
@@ -1179,7 +1184,6 @@ export default function PaymentRiskDemo({ onBack }) {
                 </span>
               </div>
             </div>
-
             {/* VECTOR BREAKDOWN */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {detectedVectors.length > 0 ? (
@@ -1249,7 +1253,6 @@ export default function PaymentRiskDemo({ onBack }) {
               )}
             </div>
           </div>
-
           {/* CHILD PROTECTION CARD (WITH PIN TRIGGER) */}
           {childProtectionEnabled &&
             (activeScamType === 'child_payment' ||
@@ -1284,7 +1287,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   >
                     <Gamepad2 size={22} color="#7c3aed" />
                   </div>
-
                   <div>
                     <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#4c1d95' }}>
                       Family Protection Active
@@ -1294,7 +1296,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     </div>
                   </div>
                 </div>
-
                 <div
                   style={{
                     background: '#ffffff',
@@ -1316,7 +1317,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     </div>
                   </div>
                 </div>
-
                 {/* GUARDIAN APPROVAL TOGGLE WITH PIN CHALLENGE */}
                 <div
                   onClick={handleGuardianApprovalToggle}
@@ -1366,7 +1366,6 @@ export default function PaymentRiskDemo({ onBack }) {
                 </div>
               </div>
             )}
-
           {/* AUTHORITY PROTOCOL */}
           {isHighRisk && activeScamType === 'authority' && (
             <>
@@ -1398,7 +1397,6 @@ export default function PaymentRiskDemo({ onBack }) {
               </div>
             </>
           )}
-
           {/* ROOT CAUSE ANALYSIS */}
           <div style={styles.card}>
             <h3
@@ -1415,7 +1413,6 @@ export default function PaymentRiskDemo({ onBack }) {
               <Layers size={18} color="#3b82f6" />
               Explainable Risk & Root-Cause Summary
             </h3>
-
             <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: '0 0 16px 0' }}>
               {detectedVectors.some((v) => v.type === 'child_payment') ? (
                 <>
@@ -1431,7 +1428,6 @@ export default function PaymentRiskDemo({ onBack }) {
                 </>
               )}
             </p>
-
             {/* RECOMMENDATION */}
             <div
               style={{
@@ -1453,7 +1449,6 @@ export default function PaymentRiskDemo({ onBack }) {
                   : currentStatus.recommendation}
               </div>
             </div>
-
             {/* ACTION BUTTONS */}
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               {isHighRisk ? (
@@ -1483,7 +1478,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     <XCircle size={16} />
                     Cancel Payment
                   </button>
-
                   <button
                     type="button"
                     onClick={() =>
@@ -1539,7 +1533,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     <UserCheck size={16} />
                     {guardianApproval ? 'Proceed with Payment' : 'Enter Guardian PIN & Pay'}
                   </button>
-
                   <button
                     type="button"
                     onClick={() => {
@@ -1585,7 +1578,6 @@ export default function PaymentRiskDemo({ onBack }) {
                     Proceed to Pay
                     <ArrowRight size={16} />
                   </button>
-
                   <button
                     type="button"
                     onClick={() => {
@@ -1610,7 +1602,6 @@ export default function PaymentRiskDemo({ onBack }) {
           </div>
         </div>
       )}
-
       {/* GUARDIAN PIN VERIFICATION MODAL */}
       <GuardianPinModal
         isOpen={showPinModal}
@@ -1621,7 +1612,6 @@ export default function PaymentRiskDemo({ onBack }) {
         }}
         onSuccess={onPinSuccess}
       />
-
     </div>
   );
 }
