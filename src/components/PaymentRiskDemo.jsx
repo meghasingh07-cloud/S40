@@ -15,17 +15,13 @@ import {
   Activity,
   Layers,
   FileText,
-  PhoneCall,
-  Scale,
-  Gift,
   Gamepad2,
-  Users,
   UserCheck,
   Baby,
   ShieldAlert,
   BrainCircuit
 } from 'lucide-react';
-
+import GuardianPinModal from './GuardianPinModal';
 // Reuses the existing AI_BACKEND Gemini integration (same service/endpoint
 // already used by the Dashboard's Risk Analysis page) as a supplementary
 // semantic layer on top of this component's own rule engine. The rule
@@ -35,7 +31,6 @@ import {
 // specific example phrase).
 const AI_BACKEND_URL =
   import.meta.env.VITE_FRAUDSHIELD_AI_URL || 'http://localhost:8000';
-
 function combineWithGemini(ruleScore, gemini) {
   const bonus = Math.round((gemini.score || 0) * 0.35);
   let combined = Math.min(98, ruleScore + bonus);
@@ -44,25 +39,22 @@ function combineWithGemini(ruleScore, gemini) {
   }
   return Math.min(98, combined);
 }
-
 export default function PaymentRiskDemo({ onBack }) {
   const [step, setStep] = useState(1);
-
   // -----------------------------
   // PAYMENT FORM
   // -----------------------------
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [paymentMode, setPaymentMode] = useState('upi');
-
   // -----------------------------
-  // CHILD PROTECTION
+  // CHILD PROTECTION & PIN
   // -----------------------------
   const [childProtectionEnabled, setChildProtectionEnabled] = useState(true);
   const [guardianApproval, setGuardianApproval] = useState(false);
   const [isGamingPayment, setIsGamingPayment] = useState(false);
-
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pendingPinAction, setPendingPinAction] = useState(null);
   // -----------------------------
   // NLP / RISK STATE
   // -----------------------------
@@ -70,14 +62,10 @@ export default function PaymentRiskDemo({ onBack }) {
   const [transcript, setTranscript] = useState('');
   const [detectedVectors, setDetectedVectors] = useState([]);
   const [riskScore, setRiskScore] = useState(8);
-  const [intentCategory, setIntentCategory] =
-    useState('Benign / Conversational');
-
+  const [intentCategory, setIntentCategory] = useState('Benign / Conversational');
   const [activeScamType, setActiveScamType] = useState(null);
-
   const recognitionRef = useRef(null);
   const geminiRequestIdRef = useRef(0);
-
   // -----------------------------
   // GEMINI SEMANTIC SUPPLEMENT (additive only; rule engine above stays
   // the source of truth). Debounced on the same `transcript` text the
@@ -86,9 +74,7 @@ export default function PaymentRiskDemo({ onBack }) {
   useEffect(() => {
     const trimmed = transcript.trim();
     if (!trimmed) return undefined;
-
     const requestId = ++geminiRequestIdRef.current;
-
     const timer = setTimeout(() => {
       fetch(`${AI_BACKEND_URL}/api/v1/risk/text-analysis`, {
         method: 'POST',
@@ -99,7 +85,6 @@ export default function PaymentRiskDemo({ onBack }) {
         .then((data) => {
           if (!data || !data.available) return;
           if (requestId !== geminiRequestIdRef.current) return; // superseded by newer text
-
           const geminiVectors = (data.signals || []).map((s) => ({
             type: `gemini_${s.type || 'signal'}`,
             title: `${String(s.type || 'signal').replace(/_/g, ' ')} (Gemini)`,
@@ -109,7 +94,6 @@ export default function PaymentRiskDemo({ onBack }) {
                 ? 'critical'
                 : 'warning',
           }));
-
           if (geminiVectors.length > 0) {
             setDetectedVectors((prev) => [...prev, ...geminiVectors]);
           }
@@ -119,55 +103,37 @@ export default function PaymentRiskDemo({ onBack }) {
           // Gemini/AI_BACKEND unavailable: keep the existing rule-based result as-is.
         });
     }, 600);
-
     return () => clearTimeout(timer);
   }, [transcript]);
-
   const isFormValid =
     recipient.trim() !== '' &&
     amount.trim() !== '' &&
     Number(amount) > 0;
-
   const formattedAmount = Number(amount || 0).toLocaleString('en-IN');
-
   // -----------------------------
   // GAMING / CHILD PAYMENT DETECTOR
   // -----------------------------
   const detectGamingPayment = (recipientValue, noteValue) => {
-    const combined =
-      `${recipientValue} ${noteValue}`.toLowerCase();
-
+    const combined = `${recipientValue} ${noteValue}`.toLowerCase();
     const gamingKeywords =
       /(roblox|free fire|freefire|bgmi|pubg|fortnite|minecraft|steam|playstation|xbox|nintendo|game|gaming|gems|coins|diamonds|skins|battle pass|game pass|in[- ]app purchase|in app purchase|virtual currency)/i;
-
     const childKeywords =
       /(child|kid|son|daughter|minor|school student|my boy|my girl|my son|my daughter)/i;
-
     return {
       gaming: gamingKeywords.test(combined),
       child: childKeywords.test(combined)
     };
   };
-
   // -----------------------------
   // PAYMENT CONTEXT CHECK
   // -----------------------------
   useEffect(() => {
     const result = detectGamingPayment(recipient, note);
-
     setIsGamingPayment(result.gaming);
-
-    if (
-      childProtectionEnabled &&
-      result.gaming
-    ) {
+    if (childProtectionEnabled && result.gaming) {
       setDetectedVectors((prev) => {
-        const exists = prev.some(
-          (v) => v.type === 'child_payment'
-        );
-
+        const exists = prev.some((v) => v.type === 'child_payment');
         if (exists) return prev;
-
         return [
           ...prev,
           {
@@ -180,26 +146,14 @@ export default function PaymentRiskDemo({ onBack }) {
         ];
       });
     }
-  }, [
-    recipient,
-    note,
-    childProtectionEnabled
-  ]);
-
+  }, [recipient, note, childProtectionEnabled]);
   // -----------------------------
   // BEHAVIORAL NLP ENGINE
   // -----------------------------
   const evaluateBehavioralRisk = (text) => {
     if (!text || text.trim() === '') {
-      const gamingResult = detectGamingPayment(
-        recipient,
-        note
-      );
-
-      if (
-        childProtectionEnabled &&
-        gamingResult.gaming
-      ) {
+      const gamingResult = detectGamingPayment(recipient, note);
+      if (childProtectionEnabled && gamingResult.gaming) {
         setDetectedVectors([
           {
             type: 'child_payment',
@@ -209,45 +163,27 @@ export default function PaymentRiskDemo({ onBack }) {
             severity: 'warning'
           }
         ]);
-
         setRiskScore(35);
-        setIntentCategory(
-          'Gaming / Child Payment Review'
-        );
+        setIntentCategory('Gaming / Child Payment Review');
         setActiveScamType('child_payment');
-
         return;
       }
-
       setDetectedVectors([]);
       setRiskScore(8);
-      setIntentCategory(
-        'Benign / Conversational'
-      );
+      setIntentCategory('Benign / Conversational');
       setActiveScamType(null);
       return;
     }
-
     const raw = text.toLowerCase();
-
     const vectors = [];
     let score = 8;
-    let primaryIntent =
-      'Benign Conversation';
-
+    let primaryIntent = 'Benign Conversation';
     let identifiedScam = null;
-
-    // -----------------------------
-    // SAFE NARRATION
-    // -----------------------------
     const isSafeNarration =
       /(did not (share|give|send|show)|checked (myself|my app|statement)|called (the )?official (website|number|customer care)|verified (on|via|from) (the )?app|no problem|happy to wait|give it some time)/i.test(
         raw
       );
-
-    // -----------------------------
     // 1. OTP / PIN / CVV THEFT
-    // -----------------------------
     const isDemandingCredentials =
       /(tell me|give me|read out|share( with)? me|send me|what is).*(your )?(otp|upi pin|pin|password|passcode|cvv|secret code|6-digit|4-digit)/i;
     if (
@@ -256,28 +192,22 @@ export default function PaymentRiskDemo({ onBack }) {
     ) {
       vectors.push({
         type: 'otp_theft',
-        title:
-          'Direct Credential Extraction Request',
+        title: 'Direct Credential Extraction Request',
         detail:
           'Caller explicitly commands you to vocalize confidential authentication codes or PINs.',
         severity: 'critical'
       });
-
       score += 85;
       identifiedScam = 'otp_theft';
-      primaryIntent =
-        'Credential Extraction Trap';
+      primaryIntent = 'Credential Extraction Trap';
     }
-
     // -----------------------------
     // 1B. BANK/INSTITUTION IMPERSONATION MONEY REQUEST
     // -----------------------------
     const isMoneyDemand =
       /(send me|transfer to me|give me|transfer)\s+(the\s+)?(money|cash|[₹$]?\s?\d[\d,]*)|need\s+(the\s+)?\d.{0,20}from you/i;
-
     const hasInstitutionPretext =
       /(bank|sbi|hdfc|icici|axis bank|kyc|verif|bank employee|bank official|account (will be|is|has been) (blocked|suspended))/i;
-
     if (
       isMoneyDemand.test(raw) &&
       hasInstitutionPretext.test(raw) &&
@@ -291,258 +221,122 @@ export default function PaymentRiskDemo({ onBack }) {
           'Caller claims bank/institution authority and demands an outbound payment under a verification pretext.',
         severity: 'critical'
       });
-
       score += 65;
-
       if (!identifiedScam) {
         identifiedScam = 'bank_impersonation_payment_request';
       }
-
       primaryIntent =
         'Bank Impersonation Payment Request';
     }
-
     // -----------------------------
     // 2. COLLECT REQUEST / APP MANIPULATION
-    // -----------------------------
     const isDemandingAppAction =
       /(open your (upi|payment) (app|application) and (approve|accept)|click (on )?(the |this )?(link|apk|button) (to receive|to verify)|accept the (collect|payment) request)/i;
-
-    if (
-      isDemandingAppAction.test(raw) &&
-      !isSafeNarration
-    ) {
+    if (isDemandingAppAction.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'collect_request',
-        title:
-          'Outbound Execution & Collect Request Manipulation',
+        title: 'Outbound Execution & Collect Request Manipulation',
         detail:
           'Caller is commanding you to approve requests or open external links under the guise of verification.',
         severity: 'critical'
       });
-
       score += 80;
-
-      if (!identifiedScam) {
-        identifiedScam =
-          'collect_request';
-      }
-
-      primaryIntent =
-        'Guided Execution Trap';
+      if (!identifiedScam) identifiedScam = 'collect_request';
+      primaryIntent = 'Guided Execution Trap';
     }
-
-    // -----------------------------
     // 3. REFUND / FAKE CREDIT
-    // -----------------------------
     const isInboundMoneyClaim =
       /(i have (sent|transferred|credited|refunded) (the |some )?money to (your|you)|congratulations you (have )?won (a )?(lottery|prize|kbc|cashback))/i;
-
-    if (
-      isInboundMoneyClaim.test(raw) &&
-      !isSafeNarration
-    ) {
+    if (isInboundMoneyClaim.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'refund',
-        title:
-          'Inverted Value Flow Fallacy',
+        title: 'Inverted Value Flow Fallacy',
         detail:
           'Caller claims money is being sent to you while supervising an outbound payment.',
         severity: 'critical'
       });
-
       score += 70;
-
-      if (!identifiedScam) {
-        identifiedScam = 'refund';
-      }
-
-      primaryIntent =
-        'Inbound Credit Deception';
+      if (!identifiedScam) identifiedScam = 'refund';
+      primaryIntent = 'Inbound Credit Deception';
     }
-
-    // -----------------------------
     // 4. AUTHORITY IMPERSONATION
-    // -----------------------------
     const isAuthorityThreat =
       /(calling from (the )?(cyber crime|police station|cbi office|customs department|narcotics bureau))|(you are under (digital )?arrest)|(arrest warrant issued against you)/i;
-
-    if (
-      isAuthorityThreat.test(raw) &&
-      !isSafeNarration
-    ) {
+    if (isAuthorityThreat.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'authority',
-        title:
-          'Law Enforcement / Cyber Crime Impersonation',
+        title: 'Law Enforcement / Cyber Crime Impersonation',
         detail:
           'Caller is invoking police or investigative agency authority to create fear and urgency.',
         severity: 'critical'
       });
-
       score += 85;
-
-      if (!identifiedScam) {
-        identifiedScam = 'authority';
-      }
-
-      primaryIntent =
-        'Law Enforcement Coercion';
+      if (!identifiedScam) identifiedScam = 'authority';
+      primaryIntent = 'Law Enforcement Coercion';
     }
-
-    // -----------------------------
     // 5. ISOLATION / COERCION
-    // -----------------------------
     const isIsolationCoercion =
       /(do not (hang up|disconnect|tell anyone))|(stay on (the )?call while you (pay|transfer))|(keep this strictly confidential)/i;
-
-    if (
-      isIsolationCoercion.test(raw) &&
-      !isSafeNarration
-    ) {
+    if (isIsolationCoercion.test(raw) && !isSafeNarration) {
       vectors.push({
         type: 'isolation',
-        title:
-          'Victim Isolation & Supervised Coercion',
+        title: 'Victim Isolation & Supervised Coercion',
         detail:
           'Caller is preventing you from disconnecting or independently verifying the situation.',
         severity: 'critical'
       });
-
       score += 45;
-
-      if (!identifiedScam) {
-        identifiedScam =
-          'subtle_social_engineering';
-      }
-
-      if (
-        primaryIntent ===
-        'Benign Conversation'
-      ) {
-        primaryIntent =
-          'Supervised Isolation';
-      }
+      if (!identifiedScam) identifiedScam = 'subtle_social_engineering';
+      if (primaryIntent === 'Benign Conversation') primaryIntent = 'Supervised Isolation';
     }
-
-    // -----------------------------
     // 6. CHILD / GAMING PAYMENT
-    // -----------------------------
-    const gamingResult =
-      detectGamingPayment(
-        recipient,
-        note
-      );
-
+    const gamingResult = detectGamingPayment(recipient, note);
     const childNarrative =
       /(my (son|daughter|child|kid)|child wants|kid wants|for my child|for my son|for my daughter|needs gems|needs coins|wants gems|wants coins|game purchase|buy gems|buy coins|buy diamonds|game recharge)/i.test(
         raw
       );
-
-    const gamingContext =
-      gamingResult.gaming ||
-      childNarrative;
-
-    if (
-      childProtectionEnabled &&
-      gamingContext
-    ) {
-      const numericAmount =
-        Number(amount || 0);
-
+    const gamingContext = gamingResult.gaming || childNarrative;
+    if (childProtectionEnabled && gamingContext) {
+      const numericAmount = Number(amount || 0);
       vectors.push({
         type: 'child_payment',
-        title:
-          'Child / Gaming Payment Protection',
+        title: 'Child / Gaming Payment Protection',
         detail:
           'Payment context indicates a possible gaming or virtual-currency purchase. FraudShield recommends guardian verification before payment.',
-        severity:
-          numericAmount >= 2000
-            ? 'critical'
-            : 'warning'
+        severity: numericAmount >= 2000 ? 'critical' : 'warning'
       });
-
-      score +=
-        numericAmount >= 2000
-          ? 35
-          : 25;
-
-      if (!identifiedScam) {
-        identifiedScam =
-          'child_payment';
-      }
-
-      primaryIntent =
-        'Gaming / Child Payment Review';
+      score += numericAmount >= 2000 ? 35 : 25;
+      if (!identifiedScam) identifiedScam = 'child_payment';
+      primaryIntent = 'Gaming / Child Payment Review';
     }
-
-    // -----------------------------
     // 7. HIGH VALUE GAMING PURCHASE
-    // -----------------------------
-    if (
-      childProtectionEnabled &&
-      gamingContext &&
-      Number(amount || 0) >= 5000
-    ) {
+    if (childProtectionEnabled && gamingContext && Number(amount || 0) >= 5000) {
       vectors.push({
         type: 'high_value_gaming',
-        title:
-          'High-Value Gaming Purchase',
-        detail:
-          `₹${Number(
-            amount
-          ).toLocaleString(
-            'en-IN'
-          )} gaming-related payment exceeds the recommended family protection threshold.`,
+        title: 'High-Value Gaming Purchase',
+        detail: `₹${Number(amount).toLocaleString('en-IN')} gaming-related payment exceeds the recommended family protection threshold.`,
         severity: 'critical'
       });
-
       score += 20;
-
-      primaryIntent =
-        'High-Value Child Payment Review';
+      primaryIntent = 'High-Value Child Payment Review';
     }
-
-    // -----------------------------
     // SAFE NARRATION RESET
-    // -----------------------------
     if (
       isSafeNarration &&
-      vectors.filter(
-        (v) =>
-          v.type !==
-          'child_payment'
-      ).length === 0
+      vectors.filter((v) => v.type !== 'child_payment').length === 0
     ) {
-      const gamingOnly =
-        childProtectionEnabled &&
-        gamingContext;
-
+      const gamingOnly = childProtectionEnabled && gamingContext;
       if (!gamingOnly) {
         score = 8;
-        primaryIntent =
-          'Benign / Conversational';
+        primaryIntent = 'Benign / Conversational';
         identifiedScam = null;
       }
     }
-
-    setActiveScamType(
-      identifiedScam
-    );
-
+    setActiveScamType(identifiedScam);
     setDetectedVectors(vectors);
-
-    setRiskScore(
-      Math.min(98, score)
-    );
-
-    setIntentCategory(
-      vectors.length > 0
-        ? primaryIntent
-        : 'Benign / Conversational'
-    );
+    setRiskScore(Math.min(98, score));
+    setIntentCategory(vectors.length > 0 ? primaryIntent : 'Benign / Conversational');
   };
-
   // -----------------------------
   // RISK STATUS
   // -----------------------------
@@ -550,13 +344,10 @@ export default function PaymentRiskDemo({ onBack }) {
     if (score >= 70) {
       return {
         level: 'HIGH RISK',
-        title:
-          `🔴 HIGH RISK THREAT VERDICT — ${score}% RISK`,
-        statusLabel:
-          `CRITICAL SOCIAL-ENGINEERING PATTERN (${score}%)`,
+        title: `🔴 HIGH RISK THREAT VERDICT — ${score}% RISK`,
+        statusLabel: `CRITICAL SOCIAL-ENGINEERING PATTERN (${score}%)`,
         theme: '#ef4444',
-        themeBg:
-          'rgba(239, 68, 68, 0.12)',
+        themeBg: 'rgba(239, 68, 68, 0.12)',
         border: '#f87171',
         text: '#fecdd3',
         subtext: '#be123c',
@@ -564,17 +355,13 @@ export default function PaymentRiskDemo({ onBack }) {
           '🛑 Freeze transaction immediately. Disconnect the call and verify independently.'
       };
     }
-
     if (score >= 30) {
       return {
         level: 'SUSPICIOUS',
-        title:
-          `🟡 SUSPICIOUS ACTIVITY VERDICT — ${score}% RISK`,
-        statusLabel:
-          `SUSPICIOUS PATTERN DETECTED (${score}%)`,
+        title: `🟡 SUSPICIOUS ACTIVITY VERDICT — ${score}% RISK`,
+        statusLabel: `SUSPICIOUS PATTERN DETECTED (${score}%)`,
         theme: '#f59e0b',
-        themeBg:
-          'rgba(245, 158, 11, 0.14)',
+        themeBg: 'rgba(245, 158, 11, 0.14)',
         border: '#fbbf24',
         text: '#fef3c7',
         subtext: '#b45309',
@@ -582,16 +369,12 @@ export default function PaymentRiskDemo({ onBack }) {
           '⚠️ Verify the recipient and payment context before approving.'
       };
     }
-
     return {
       level: 'SAFE',
-      title:
-        `🟢 SAFE TRANSACTION VERDICT — ${score}% RISK`,
-      statusLabel:
-        `BENIGN CONVERSATION • NO COERCIVE VECTORS (${score}%)`,
+      title: `🟢 SAFE TRANSACTION VERDICT — ${score}% RISK`,
+      statusLabel: `BENIGN CONVERSATION • NO COERCIVE VECTORS (${score}%)`,
       theme: '#10b981',
-      themeBg:
-        'rgba(16, 185, 129, 0.12)',
+      themeBg: 'rgba(16, 185, 129, 0.12)',
       border: '#34d399',
       text: '#a7f3d0',
       subtext: '#047857',
@@ -599,68 +382,35 @@ export default function PaymentRiskDemo({ onBack }) {
         '✅ Safe to proceed with normal PIN entry.'
     };
   };
-
-  const currentStatus =
-    getRiskStatus(riskScore);
-
-  const isHighRisk =
-    riskScore >= 70;
-
+  const currentStatus = getRiskStatus(riskScore);
+  const isHighRisk = riskScore >= 70;
   // -----------------------------
   // SPEECH RECOGNITION
   // -----------------------------
   useEffect(() => {
     if (step === 2) {
       const SpeechRecognition =
-        window.SpeechRecognition ||
-        window.webkitSpeechRecognition;
-
+        window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRecognition) {
-        const recognition =
-          new SpeechRecognition();
-
+        const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
-
-        recognition.onstart = () =>
-          setIsListening(true);
-
-        recognition.onend = () =>
-          setIsListening(false);
-
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
         recognition.onresult = (event) => {
           let currentText = '';
-
-          for (
-            let i = 0;
-            i < event.results.length;
-            i++
-          ) {
-            currentText +=
-              event.results[i][0]
-                .transcript + ' ';
+          for (let i = 0; i < event.results.length; i++) {
+            currentText += event.results[i][0].transcript + ' ';
           }
-
-          setTranscript(
-            currentText
-          );
-
-          evaluateBehavioralRisk(
-            currentText
-          );
+          setTranscript(currentText);
+          evaluateBehavioralRisk(currentText);
         };
-
-        recognitionRef.current =
-          recognition;
-
+        recognitionRef.current = recognition;
         try {
           recognition.start();
         } catch (err) {
-          console.error(
-            'Mic error:',
-            err
-          );
+          console.error('Mic error:', err);
         }
       }
     } else {
@@ -668,18 +418,14 @@ export default function PaymentRiskDemo({ onBack }) {
         recognitionRef.current.stop();
       }
     }
-
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
     };
   }, [step]);
-
   const toggleMic = () => {
-    if (!recognitionRef.current)
-      return;
-
+    if (!recognitionRef.current) return;
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
@@ -688,29 +434,49 @@ export default function PaymentRiskDemo({ onBack }) {
         recognitionRef.current.start();
         setIsListening(true);
       } catch (err) {
-        console.error(
-          'Microphone error:',
-          err
-        );
+        console.error('Microphone error:', err);
       }
     }
   };
-
+  // -----------------------------
+  // PIN VERIFICATION HANDLERS
+  // -----------------------------
+  const handleGuardianApprovalToggle = () => {
+    if (!guardianApproval) {
+      setPendingPinAction('guardian_checkbox');
+      setShowPinModal(true);
+    } else {
+      setGuardianApproval(false);
+    }
+  };
+  const handleProtectedPay = (actionType) => {
+    setPendingPinAction(actionType);
+    setShowPinModal(true);
+  };
+  const onPinSuccess = () => {
+    setShowPinModal(false);
+    if (pendingPinAction === 'guardian_checkbox') {
+      setGuardianApproval(true);
+    } else if (pendingPinAction === 'child_payment_proceed') {
+      alert(`Guardian approval verified with PIN. Proceeding with gaming payment of ₹${formattedAmount}.`);
+    } else if (pendingPinAction === 'safe_payment') {
+      alert(`Proceeding to secure UPI PIN entry for ₹${formattedAmount}.`);
+    }
+    setPendingPinAction(null);
+  };
   // -----------------------------
   // STYLES
   // -----------------------------
   const styles = {
     container: {
       padding: '24px',
-      fontFamily:
-        'Inter, system-ui, -apple-system, sans-serif',
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       color: '#1e293b',
       boxSizing: 'border-box',
       width: '100%',
       maxWidth: '1200px',
       margin: '0 auto'
     },
-
     backButton: {
       display: 'inline-flex',
       alignItems: 'center',
@@ -724,17 +490,14 @@ export default function PaymentRiskDemo({ onBack }) {
       marginBottom: '16px',
       padding: '6px 0'
     },
-
     card: {
       backgroundColor: '#ffffff',
       border: '1px solid #e2e8f0',
       borderRadius: '16px',
       padding: '24px',
-      boxShadow:
-        '0 1px 3px rgba(0, 0, 0, 0.04)',
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
       boxSizing: 'border-box'
     },
-
     input: {
       width: '100%',
       backgroundColor: '#f8fafc',
@@ -747,10 +510,8 @@ export default function PaymentRiskDemo({ onBack }) {
       boxSizing: 'border-box'
     }
   };
-
   return (
     <div style={styles.container}>
-
       {/* BACK */}
       <button
         type="button"
@@ -764,12 +525,8 @@ export default function PaymentRiskDemo({ onBack }) {
         style={styles.backButton}
       >
         <ArrowLeft size={16} />
-
-        {step > 1
-          ? 'Back to Previous Step'
-          : 'Back to Dashboard'}
+        {step > 1 ? 'Back to Previous Step' : 'Back to Dashboard'}
       </button>
-
       {/* PROGRESS */}
       <div
         style={{
@@ -780,20 +537,9 @@ export default function PaymentRiskDemo({ onBack }) {
         }}
       >
         {[
-          {
-            num: 1,
-            label: '1. Payment Details'
-          },
-          {
-            num: 2,
-            label:
-              '2. Multi-Vector Call NLP'
-          },
-          {
-            num: 3,
-            label:
-              '3. Behavioral Risk Verdict'
-          }
+          { num: 1, label: '1. Payment Details' },
+          { num: 2, label: '2. Multi-Vector Call NLP' },
+          { num: 3, label: '3. Risk Analysis Verdict' }
         ].map((item) => (
           <div
             key={item.num}
@@ -810,13 +556,8 @@ export default function PaymentRiskDemo({ onBack }) {
                 height: '28px',
                 borderRadius: '50%',
                 backgroundColor:
-                  step >= item.num
-                    ? currentStatus.theme
-                    : '#e2e8f0',
-                color:
-                  step >= item.num
-                    ? '#ffffff'
-                    : '#64748b',
+                  step >= item.num ? currentStatus.theme : '#e2e8f0',
+                color: step >= item.num ? '#ffffff' : '#64748b',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -826,32 +567,22 @@ export default function PaymentRiskDemo({ onBack }) {
             >
               {item.num}
             </div>
-
             <span
               style={{
                 fontSize: '13px',
-                fontWeight:
-                  step === item.num
-                    ? '700'
-                    : '500',
-                color:
-                  step === item.num
-                    ? '#0f172a'
-                    : '#64748b'
+                fontWeight: step === item.num ? '700' : '500',
+                color: step === item.num ? '#0f172a' : '#64748b'
               }}
             >
               {item.label}
             </span>
-
             {item.num !== 3 && (
               <div
                 style={{
                   flex: 1,
                   height: '2px',
                   backgroundColor:
-                    step > item.num
-                      ? currentStatus.theme
-                      : '#e2e8f0',
+                    step > item.num ? currentStatus.theme : '#e2e8f0',
                   margin: '0 8px'
                 }}
               />
@@ -859,139 +590,83 @@ export default function PaymentRiskDemo({ onBack }) {
           </div>
         ))}
       </div>
-
       {/* =====================================================
           STEP 1
       ===================================================== */}
-
       {step === 1 && (
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns:
-              '2fr 1fr',
+            gridTemplateColumns: '2fr 1fr',
             gap: '24px',
             alignItems: 'start'
           }}
         >
-
           {/* PAYMENT CARD */}
           <div style={styles.card}>
-
             <div
               style={{
-                borderBottom:
-                  '1px solid #f1f5f9',
+                borderBottom: '1px solid #f1f5f9',
                 paddingBottom: '16px',
                 marginBottom: '20px'
               }}
             >
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: '18px',
-                  fontWeight: '700'
-                }}
-              >
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>
                 Initiate Secure Transfer
               </h2>
-
-              <p
-                style={{
-                  margin:
-                    '4px 0 0',
-                  fontSize: '12px',
-                  color: '#64748b'
-                }}
-              >
-                Beneficiary, device,
-                call stream and family
-                context will be verified
-                before authorization.
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>
+                Beneficiary, device, call stream and family context will be verified before authorization.
               </p>
             </div>
-
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-
                 if (isFormValid) {
-                  evaluateBehavioralRisk(
-                    transcript
-                  );
-
+                  evaluateBehavioralRisk(transcript);
                   setStep(2);
                 }
               }}
             >
-
               {/* RECIPIENT */}
-              <div
-                style={{
-                  marginBottom: '16px'
-                }}
-              >
+              <div style={{ marginBottom: '16px' }}>
                 <label
                   style={{
                     display: 'block',
                     fontSize: '11px',
                     fontWeight: '700',
-                    textTransform:
-                      'uppercase',
+                    textTransform: 'uppercase',
                     color: '#475569',
                     marginBottom: '8px'
                   }}
                 >
-                  Recipient UPI ID /
-                  Account
+                  Recipient UPI ID / Account
                 </label>
-
                 <input
                   type="text"
                   value={recipient}
-                  onChange={(e) =>
-                    setRecipient(
-                      e.target.value
-                    )
-                  }
+                  onChange={(e) => setRecipient(e.target.value)}
                   style={styles.input}
                   placeholder="e.g. college_admin@oksbi, game-store@upi"
                 />
               </div>
-
               {/* AMOUNT */}
-              <div
-                style={{
-                  marginBottom: '16px'
-                }}
-              >
+              <div style={{ marginBottom: '16px' }}>
                 <label
                   style={{
                     display: 'block',
                     fontSize: '11px',
                     fontWeight: '700',
-                    textTransform:
-                      'uppercase',
+                    textTransform: 'uppercase',
                     color: '#475569',
                     marginBottom: '8px'
                   }}
                 >
                   Amount (INR)
                 </label>
-
-                <div
-                  style={{
-                    position:
-                      'relative',
-                    display: 'flex',
-                    alignItems:
-                      'center'
-                  }}
-                >
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <span
                     style={{
-                      position:
-                        'absolute',
+                      position: 'absolute',
                       left: '16px',
                       color: '#94a3b8',
                       fontWeight: '600',
@@ -1000,1880 +675,879 @@ export default function PaymentRiskDemo({ onBack }) {
                   >
                     ₹
                   </span>
-
                   <input
                     type="number"
                     value={amount}
-                    onChange={(e) =>
-                      setAmount(
-                        e.target.value
-                      )
-                    }
+                    onChange={(e) => setAmount(e.target.value)}
                     style={{
                       ...styles.input,
-                      paddingLeft:
-                        '34px',
+                      paddingLeft: '34px',
                       fontWeight: '600'
                     }}
                     placeholder="0.00"
                   />
                 </div>
               </div>
-
               {/* NOTE */}
-              <div
-                style={{
-                  marginBottom: '16px'
-                }}
-              >
+              <div style={{ marginBottom: '16px' }}>
                 <label
                   style={{
                     display: 'block',
                     fontSize: '11px',
                     fontWeight: '700',
-                    textTransform:
-                      'uppercase',
+                    textTransform: 'uppercase',
                     color: '#475569',
                     marginBottom: '8px'
                   }}
                 >
                   Note / Reference
                 </label>
-
                 <input
                   type="text"
                   value={note}
-                  onChange={(e) =>
-                    setNote(
-                      e.target.value
-                    )
-                  }
+                  onChange={(e) => setNote(e.target.value)}
                   style={styles.input}
                   placeholder="e.g. Buy game gems for my child"
                 />
               </div>
-
-              {/* =================================================
-                  CHILD PROTECTION
-              ================================================= */}
-
+              {/* CHILD PROTECTION */}
               <div
                 style={{
-                  background:
-                    'linear-gradient(135deg, #faf5ff, #f5f3ff)',
-                  border:
-                    '1px solid #ddd6fe',
+                  background: 'linear-gradient(135deg, #faf5ff, #f5f3ff)',
+                  border: '1px solid #ddd6fe',
                   borderRadius: '14px',
                   padding: '16px',
                   marginBottom: '20px'
                 }}
               >
-
                 <div
                   style={{
                     display: 'flex',
-                    justifyContent:
-                      'space-between',
-                    alignItems:
-                      'flex-start',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
                     gap: '12px'
                   }}
                 >
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '10px'
-                    }}
-                  >
+                  <div style={{ display: 'flex', gap: '10px' }}>
                     <div
                       style={{
                         width: '38px',
                         height: '38px',
-                        borderRadius:
-                          '10px',
-                        background:
-                          '#ede9fe',
+                        borderRadius: '10px',
+                        background: '#ede9fe',
                         display: 'flex',
-                        alignItems:
-                          'center',
-                        justifyContent:
-                          'center',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         flexShrink: 0
                       }}
                     >
-                      <Baby
-                        size={20}
-                        color="#7c3aed"
-                      />
+                      <Baby size={20} color="#7c3aed" />
                     </div>
-
                     <div>
-                      <div
-                        style={{
-                          fontSize: '13px',
-                          fontWeight: '800',
-                          color:
-                            '#4c1d95'
-                        }}
-                      >
-                        Child Payment
-                        Protection
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#4c1d95' }}>
+                        Child Payment Protection
                       </div>
-
                       <div
                         style={{
                           fontSize: '11px',
-                          color:
-                            '#6d28d9',
-                          marginTop:
-                            '3px',
-                          lineHeight:
-                            '1.4'
+                          color: '#6d28d9',
+                          marginTop: '3px',
+                          lineHeight: '1.4'
                         }}
                       >
-                        Protect children
-                        from accidental
-                        gaming and
-                        in-app purchases.
+                        Protect children from accidental gaming and in-app purchases.
                       </div>
                     </div>
                   </div>
-
                   <button
                     type="button"
-                    onClick={() =>
-                      setChildProtectionEnabled(
-                        !childProtectionEnabled
-                      )
-                    }
+                    onClick={() => setChildProtectionEnabled(!childProtectionEnabled)}
                     style={{
                       border: 'none',
-                      background:
-                        childProtectionEnabled
-                          ? '#7c3aed'
-                          : '#cbd5e1',
+                      background: childProtectionEnabled ? '#7c3aed' : '#cbd5e1',
                       width: '42px',
                       height: '24px',
-                      borderRadius:
-                        '999px',
-                      cursor:
-                        'pointer',
-                      position:
-                        'relative',
+                      borderRadius: '999px',
+                      cursor: 'pointer',
+                      position: 'relative',
                       flexShrink: 0
                     }}
                   >
                     <span
                       style={{
-                        position:
-                          'absolute',
+                        position: 'absolute',
                         top: '3px',
-                        left:
-                          childProtectionEnabled
-                            ? '21px'
-                            : '3px',
+                        left: childProtectionEnabled ? '21px' : '3px',
                         width: '18px',
                         height: '18px',
-                        borderRadius:
-                          '50%',
-                        background:
-                          '#ffffff',
-                        transition:
-                          'left 0.2s'
+                        borderRadius: '50%',
+                        background: '#ffffff',
+                        transition: 'left 0.2s'
                       }}
                     />
                   </button>
-
                 </div>
-
                 {childProtectionEnabled && (
                   <div
                     style={{
-                      marginTop:
-                        '14px',
-                      background:
-                        '#ffffff',
-                      border:
-                        '1px solid #ede9fe',
-                      borderRadius:
-                        '10px',
-                      padding:
-                        '10px 12px',
-                      display:
-                        'flex',
+                      marginTop: '14px',
+                      background: '#ffffff',
+                      border: '1px solid #ede9fe',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      display: 'flex',
                       gap: '8px',
-                      alignItems:
-                        'flex-start'
+                      alignItems: 'flex-start'
                     }}
                   >
                     <ShieldCheck
                       size={15}
                       color="#7c3aed"
-                      style={{
-                        flexShrink: 0,
-                        marginTop: '2px'
-                      }}
+                      style={{ flexShrink: 0, marginTop: '2px' }}
                     />
-
-                    <span
-                      style={{
-                        fontSize:
-                          '11px',
-                        color:
-                          '#5b21b6',
-                        lineHeight:
-                          '1.5'
-                      }}
-                    >
-                      FraudShield will
-                      automatically detect
-                      gaming purchases,
-                      virtual currency,
-                      unusual child spending
-                      and high-value in-app
-                      payments.
+                    <span style={{ fontSize: '11px', color: '#5b21b6', lineHeight: '1.5' }}>
+                      FraudShield will automatically detect gaming purchases, virtual currency, unusual child spending and high-value in-app payments.
                     </span>
                   </div>
                 )}
-
               </div>
-
               {/* PAYMENT BUTTON */}
               <button
                 type="submit"
                 disabled={!isFormValid}
                 style={{
                   width: '100%',
-                  backgroundColor:
-                    isFormValid
-                      ? '#10b981'
-                      : '#94a3b8',
+                  backgroundColor: isFormValid ? '#10b981' : '#94a3b8',
                   color: '#ffffff',
                   border: 'none',
                   borderRadius: '12px',
                   padding: '14px',
                   fontSize: '14px',
                   fontWeight: '600',
-                  cursor:
-                    isFormValid
-                      ? 'pointer'
-                      : 'not-allowed',
+                  cursor: isFormValid ? 'pointer' : 'not-allowed',
                   display: 'flex',
-                  alignItems:
-                    'center',
-                  justifyContent:
-                    'center',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   gap: '8px'
                 }}
               >
                 <Lock size={16} />
-
-                Pay{' '}
-                {amount
-                  ? `₹${formattedAmount}`
-                  : 'Now'}
-
-                <ArrowRight
-                  size={16}
-                />
+                Pay {amount ? `₹${formattedAmount}` : 'Now'}
+                <ArrowRight size={16} />
               </button>
-
             </form>
           </div>
-
           {/* RIGHT INFORMATION */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection:
-                'column',
-              gap: '16px'
-            }}
-          >
-
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={styles.card}>
-
               <h3
                 style={{
-                  margin:
-                    '0 0 12px 0',
+                  margin: '0 0 12px 0',
                   fontSize: '14px',
                   fontWeight: '700',
                   display: 'flex',
-                  alignItems:
-                    'center',
+                  alignItems: 'center',
                   gap: '8px'
                 }}
               >
-                <BrainCircuit
-                  size={18}
-                  color="#10b981"
-                />
-
-                Intent-Driven
-                Protection
+                <BrainCircuit size={18} color="#10b981" />
+                Intent-Driven Protection
               </h3>
-
-              <p
-                style={{
-                  fontSize: '12px',
-                  color: '#64748b',
-                  lineHeight: '1.6',
-                  margin: 0
-                }}
-              >
-                FraudShield understands
-                the context of a payment
-                instead of relying only on
-                keywords.
+              <p style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.6', margin: 0 }}>
+                FraudShield combines real-time NLP and behavioral signals into an explainable risk verdict before money moves.
               </p>
-
             </div>
-
-            {/* CHILD PROTECTION PREVIEW */}
             <div
               style={{
-                background:
-                  '#ffffff',
-                border:
-                  '1px solid #ddd6fe',
-                borderRadius:
-                  '16px',
+                background: '#ffffff',
+                border: '1px solid #ddd6fe',
+                borderRadius: '16px',
                 padding: '20px',
-                boxShadow:
-                  '0 1px 3px rgba(0,0,0,.04)'
+                boxShadow: '0 1px 3px rgba(0,0,0,.04)'
               }}
             >
-
               <div
                 style={{
-                  display:
-                    'flex',
-                  alignItems:
-                    'center',
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: '8px',
-                  marginBottom:
-                    '12px'
+                  marginBottom: '12px'
                 }}
               >
-                <Gamepad2
-                  size={18}
-                  color="#7c3aed"
-                />
-
-                <span
-                  style={{
-                    fontSize:
-                      '14px',
-                    fontWeight:
-                      '700',
-                    color:
-                      '#4c1d95'
-                  }}
-                >
-                  Gaming Payment
-                  Protection
+                <Gamepad2 size={18} color="#7c3aed" />
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#4c1d95' }}>
+                  Gaming Payment Protection
                 </span>
               </div>
-
-              <div
-                style={{
-                  display:
-                    'flex',
-                  flexDirection:
-                    'column',
-                  gap: '9px'
-                }}
-              >
-
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
                 {[
                   'Game gems & virtual currency',
                   'In-app purchases',
                   'Unusual child spending',
                   'High-value gaming transactions'
-                ].map(
-                  (text, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display:
-                          'flex',
-                        gap: '8px',
-                        alignItems:
-                          'center',
-                        fontSize:
-                          '11px',
-                        color:
-                          '#64748b'
-                      }}
-                    >
-                      <CheckCircle2
-                        size={14}
-                        color="#8b5cf6"
-                      />
-
-                      {text}
-                    </div>
-                  )
-                )}
-
+                ].map((text, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center',
+                      fontSize: '11px',
+                      color: '#64748b'
+                    }}
+                  >
+                    <CheckCircle2 size={14} color="#8b5cf6" />
+                    {text}
+                  </div>
+                ))}
               </div>
-
             </div>
-
           </div>
         </div>
       )}
-
       {/* =====================================================
           STEP 2
       ===================================================== */}
-
       {step === 2 && (
         <div
           style={{
             maxWidth: '720px',
             margin: '0 auto',
             display: 'flex',
-            flexDirection:
-              'column',
+            flexDirection: 'column',
             gap: '20px'
           }}
         >
-
           <div
             style={{
-              backgroundColor:
-                '#0f172a',
+              backgroundColor: '#0f172a',
               color: '#ffffff',
               borderRadius: '24px',
-              padding:
-                '30px 24px',
-              boxShadow:
-                '0 10px 25px rgba(0,0,0,0.2)',
+              padding: '30px 24px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
               textAlign: 'center'
             }}
           >
-
             {/* STATUS */}
             <div
               style={{
-                display:
-                  'inline-flex',
-                alignItems:
-                  'center',
+                display: 'inline-flex',
+                alignItems: 'center',
                 gap: '8px',
-                backgroundColor:
-                  currentStatus.themeBg,
-                color:
-                  currentStatus.border,
-                padding:
-                  '6px 16px',
-                borderRadius:
-                  '9999px',
+                backgroundColor: currentStatus.themeBg,
+                color: currentStatus.border,
+                padding: '6px 16px',
+                borderRadius: '9999px',
                 fontSize: '11px',
                 fontWeight: '700',
-                marginBottom:
-                  '16px'
+                marginBottom: '16px'
               }}
             >
-
               <span
                 style={{
                   width: '8px',
                   height: '8px',
-                  borderRadius:
-                    '50%',
-                  backgroundColor:
-                    currentStatus.theme,
-                  boxShadow:
-                    `0 0 8px ${currentStatus.theme}`
+                  borderRadius: '50%',
+                  backgroundColor: currentStatus.theme,
+                  boxShadow: `0 0 8px ${currentStatus.theme}`
                 }}
               />
-
               {currentStatus.statusLabel}
             </div>
-
             {/* CALL ICON */}
             <div
               style={{
                 width: '60px',
                 height: '60px',
-                borderRadius:
-                  '50%',
-                backgroundColor:
-                  '#1e293b',
-                margin:
-                  '0 auto 12px',
-                display:
-                  'flex',
-                alignItems:
-                  'center',
-                justifyContent:
-                  'center',
-                border:
-                  `2px solid ${currentStatus.theme}`
+                borderRadius: '50%',
+                backgroundColor: '#1e293b',
+                margin: '0 auto 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: `2px solid ${currentStatus.theme}`
               }}
             >
-              <Volume2
-                size={28}
-                color={
-                  currentStatus.theme
-                }
-              />
+              <Volume2 size={28} color={currentStatus.theme} />
             </div>
-
-            <h3
-              style={{
-                margin:
-                  '0 0 4px 0',
-                fontSize:
-                  '18px',
-                fontWeight:
-                  '700'
-              }}
-            >
-              Incoming Call:
-              +91 98210-XXXXX
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: '700' }}>
+              Incoming Call: +91 98210-XXXXX
             </h3>
-
-            <p
-              style={{
-                margin:
-                  '0 0 16px 0',
-                fontSize:
-                  '12px',
-                color:
-                  '#94a3b8'
-              }}
-            >
-              Target:{' '}
-              <code>
-                {recipient}
-              </code>{' '}
-              • Amount:{' '}
-              <strong>
-                ₹{formattedAmount}
-              </strong>
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>
+              Target: <code>{recipient}</code> • Amount: <strong>₹{formattedAmount}</strong>
             </p>
-
-            {/* CHILD PAYMENT NOTICE */}
-            {isGamingPayment &&
-              childProtectionEnabled && (
-                <div
-                  style={{
-                    background:
-                      'rgba(124,58,237,.15)',
-                    border:
-                      '1px solid #8b5cf6',
-                    borderRadius:
-                      '12px',
-                    padding:
-                      '12px',
-                    marginBottom:
-                      '16px',
-                    display:
-                      'flex',
-                    alignItems:
-                      'center',
-                    gap: '10px',
-                    textAlign:
-                      'left'
-                  }}
-                >
-                  <Gamepad2
-                    size={20}
-                    color="#a78bfa"
-                  />
-
-                  <div>
-                    <div
-                      style={{
-                        fontSize:
-                          '12px',
-                        fontWeight:
-                          '700',
-                        color:
-                          '#c4b5fd'
-                      }}
-                    >
-                      Gaming Payment
-                      Detected
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize:
-                          '11px',
-                        color:
-                          '#a5b4fc',
-                        marginTop:
-                          '2px'
-                      }}
-                    >
-                      Family Protection
-                      is monitoring this
-                      transaction.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-            {/* NLP */}
+            {/* NLP FRAME CLASSIFIER */}
             <div
               style={{
-                backgroundColor:
-                  '#1e293b',
-                borderRadius:
-                  '16px',
-                padding:
-                  '16px',
-                textAlign:
-                  'left',
-                marginBottom:
-                  '20px',
-                border:
-                  `1px solid ${currentStatus.theme}`
+                backgroundColor: '#1e293b',
+                borderRadius: '16px',
+                padding: '16px',
+                textAlign: 'left',
+                marginBottom: '20px',
+                border: `1px solid ${currentStatus.theme}`
               }}
             >
-
               <div
                 style={{
-                  display:
-                    'flex',
-                  justifyContent:
-                    'space-between',
-                  alignItems:
-                    'center',
-                  marginBottom:
-                    '10px'
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '10px'
                 }}
               >
-
                 <span
                   style={{
-                    fontSize:
-                      '11px',
-                    color:
-                      '#94a3b8',
-                    textTransform:
-                      'uppercase',
-                    fontWeight:
-                      '700',
-                    display:
-                      'flex',
-                    alignItems:
-                      'center',
+                    fontSize: '11px',
+                    color: '#94a3b8',
+                    textTransform: 'uppercase',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: '6px'
                   }}
                 >
-                  <Activity
-                    size={14}
-                    color={
-                      currentStatus.theme
-                    }
-                  />
-
-                  Speech Intent
-                  Frame Classifier
+                  <Activity size={14} color={currentStatus.theme} />
+                  Speech Intent Frame Classifier
                 </span>
-
                 <button
                   type="button"
-                  onClick={
-                    toggleMic
-                  }
+                  onClick={toggleMic}
                   style={{
-                    backgroundColor:
-                      isListening
-                        ? currentStatus.theme
-                        : '#475569',
-                    color:
-                      '#fff',
-                    border:
-                      'none',
-                    borderRadius:
-                      '6px',
-                    padding:
-                      '4px 10px',
-                    fontSize:
-                      '11px',
-                    fontWeight:
-                      '600',
-                    cursor:
-                      'pointer',
-                    display:
-                      'flex',
-                    alignItems:
-                      'center',
-                    gap:
-                      '4px'
+                    backgroundColor: isListening ? currentStatus.theme : '#475569',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
                   }}
                 >
-                  {isListening ? (
-                    <Mic size={12} />
-                  ) : (
-                    <MicOff
-                      size={12}
-                    />
-                  )}
-
-                  {isListening
-                    ? 'Mic Active'
-                    : 'Enable Mic'}
+                  {isListening ? <Mic size={12} /> : <MicOff size={12} />}
+                  {isListening ? 'Mic Active' : 'Enable Mic'}
                 </button>
-
               </div>
-
               <textarea
-                value={
-                  transcript
-                }
+                value={transcript}
                 onChange={(e) => {
-                  setTranscript(
-                    e.target.value
-                  );
-
-                  evaluateBehavioralRisk(
-                    e.target.value
-                  );
+                  setTranscript(e.target.value);
+                  evaluateBehavioralRisk(e.target.value);
                 }}
                 placeholder="Speak into microphone or type here..."
                 rows={3}
                 style={{
-                  width:
-                    '100%',
-                  backgroundColor:
-                    currentStatus.themeBg,
-                  border:
-                    `1px solid ${currentStatus.border}`,
-                  borderRadius:
-                    '10px',
-                  color:
-                    currentStatus.text,
-                  padding:
-                    '12px',
-                  fontSize:
-                    '13px',
-                  lineHeight:
-                    '1.4',
-                  boxSizing:
-                    'border-box',
-                  outline:
-                    'none',
-                  resize:
-                    'none'
+                  width: '100%',
+                  backgroundColor: currentStatus.themeBg,
+                  border: `1px solid ${currentStatus.border}`,
+                  borderRadius: '10px',
+                  color: currentStatus.text,
+                  padding: '12px',
+                  fontSize: '13px',
+                  lineHeight: '1.4',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                  resize: 'none'
                 }}
               />
-
-              {/* VECTORS */}
               <div
                 style={{
-                  marginTop:
-                    '12px',
-                  display:
-                    'flex',
-                  flexDirection:
-                    'column',
+                  marginTop: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
                   gap: '6px'
                 }}
               >
-
                 <div
                   style={{
-                    display:
-                      'flex',
-                    justifyContent:
-                      'space-between',
-                    fontSize:
-                      '11px'
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '11px'
                   }}
                 >
-                  <span
-                    style={{
-                      color:
-                        '#94a3b8'
-                    }}
-                  >
-                    Classified Intent:{' '}
-                    <strong
-                      style={{
-                        color:
-                          currentStatus.border
-                      }}
-                    >
-                      {intentCategory}
-                    </strong>
+                  <span style={{ color: '#94a3b8' }}>
+                    Classified Intent: <strong style={{ color: currentStatus.border }}>{intentCategory}</strong>
                   </span>
-
-                  <span
-                    style={{
-                      color:
-                        '#94a3b8'
-                    }}
-                  >
-                    Active Vectors:{' '}
-                    <strong
-                      style={{
-                        color:
-                          currentStatus.border
-                      }}
-                    >
-                      {
-                        detectedVectors.length
-                      }
-                    </strong>
+                  <span style={{ color: '#94a3b8' }}>
+                    Active Vectors: <strong style={{ color: currentStatus.border }}>{detectedVectors.length}</strong>
                   </span>
                 </div>
-
-                {detectedVectors.map(
-                  (v, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        fontSize:
-                          '11px',
-                        color:
-                          v.type ===
-                          'child_payment'
-                            ? '#ddd6fe'
-                            : '#fecdd3',
-                        backgroundColor:
-                          v.type ===
-                          'child_payment'
-                            ? 'rgba(124,58,237,.12)'
-                            : 'rgba(239,68,68,.1)',
-                        padding:
-                          '8px 10px',
-                        borderRadius:
-                          '6px',
-                        borderLeft:
-                          `3px solid ${
-                            v.type ===
-                            'child_payment'
-                              ? '#8b5cf6'
-                              : currentStatus.theme
-                          }`
-                      }}
-                    >
-                      <strong>
-                        {v.title}
-                      </strong>
-                      : {v.detail}
-                    </div>
-                  )
-                )}
-
+                {detectedVectors.map((v, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: '11px',
+                      color: v.type === 'child_payment' ? '#ddd6fe' : '#fecdd3',
+                      backgroundColor:
+                        v.type === 'child_payment'
+                          ? 'rgba(124,58,237,.12)'
+                          : 'rgba(239,68,68,.1)',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      borderLeft: `3px solid ${
+                        v.type === 'child_payment' ? '#8b5cf6' : currentStatus.theme
+                      }`
+                    }}
+                  >
+                    <strong>{v.title}</strong>: {v.detail}
+                  </div>
+                ))}
               </div>
             </div>
-
             <button
               type="button"
-              onClick={() =>
-                setStep(3)
-              }
+              onClick={() => setStep(3)}
               style={{
-                width:
-                  '100%',
-                backgroundColor:
-                  currentStatus.theme,
-                color:
-                  '#ffffff',
-                border:
-                  'none',
-                borderRadius:
-                  '12px',
-                padding:
-                  '14px',
-                fontWeight:
-                  '700',
-                fontSize:
-                  '14px',
-                cursor:
-                  'pointer',
-                display:
-                  'flex',
-                alignItems:
-                  'center',
-                justifyContent:
-                  'center',
+                width: '100%',
+                backgroundColor: currentStatus.theme,
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '14px',
+                fontWeight: '700',
+                fontSize: '14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px'
               }}
             >
               {isHighRisk
                 ? 'Proceed to Risk Interception'
                 : riskScore >= 30
-                  ? 'Proceed to Risk Review'
-                  : 'Proceed to Security Evaluation'}
-
-              <ArrowRight
-                size={16}
-              />
+                  ? 'Proceed to Risk Analysis'
+                  : 'Proceed to Risk Analysis'}
+              <ArrowRight size={16} />
             </button>
-
           </div>
         </div>
       )}
-
       {/* =====================================================
-          STEP 3
+          STEP 3 (UNIFIED RISK ANALYSIS & VERDICT)
       ===================================================== */}
-
       {step === 3 && (
         <div
           style={{
-            maxWidth:
-              '840px',
-            margin:
-              '0 auto',
-            display:
-              'flex',
-            flexDirection:
-              'column',
+            maxWidth: '840px',
+            margin: '0 auto',
+            display: 'flex',
+            flexDirection: 'column',
             gap: '20px'
           }}
         >
-
           {/* MAIN VERDICT */}
           <div
             style={{
-              backgroundColor:
-                currentStatus.themeBg,
-              border:
-                `1.5px solid ${currentStatus.border}`,
-              borderRadius:
-                '20px',
-              padding:
-                '24px'
+              backgroundColor: currentStatus.themeBg,
+              border: `1.5px solid ${currentStatus.border}`,
+              borderRadius: '20px',
+              padding: '24px'
             }}
           >
-
             <div
               style={{
-                display:
-                  'flex',
-                alignItems:
-                  'center',
+                display: 'flex',
+                alignItems: 'center',
                 gap: '12px',
-                marginBottom:
-                  '16px'
+                marginBottom: '16px'
               }}
             >
-
               {isHighRisk ? (
-                <AlertOctagon
-                  size={34}
-                  color="#ef4444"
-                />
+                <AlertOctagon size={34} color="#ef4444" />
               ) : riskScore >= 30 ? (
-                <AlertTriangle
-                  size={34}
-                  color="#f59e0b"
-                />
+                <AlertTriangle size={34} color="#f59e0b" />
               ) : (
-                <ShieldCheck
-                  size={34}
-                  color="#10b981"
-                />
+                <ShieldCheck size={34} color="#10b981" />
               )}
-
               <div>
                 <h2
                   style={{
                     margin: 0,
-                    fontSize:
-                      '21px',
-                    fontWeight:
-                      '800',
-                    color:
-                      currentStatus.theme
+                    fontSize: '21px',
+                    fontWeight: '800',
+                    color: currentStatus.theme
                   }}
                 >
                   {currentStatus.title}
                 </h2>
-
                 <span
                   style={{
-                    fontSize:
-                      '12px',
-                    color:
-                      currentStatus.subtext,
-                    fontWeight:
-                      '600'
+                    fontSize: '12px',
+                    color: currentStatus.subtext,
+                    fontWeight: '600'
                   }}
                 >
-                  Intent Profile:{' '}
-                  <strong>
-                    {intentCategory}
-                  </strong>
+                  Unified Threat Score: <strong>{riskScore}%</strong> • Intent Profile: <strong>{intentCategory}</strong>
                 </span>
               </div>
             </div>
-
             {/* VECTOR BREAKDOWN */}
-            <div
-              style={{
-                display:
-                  'flex',
-                flexDirection:
-                  'column',
-                gap: '8px'
-              }}
-            >
-
-              {detectedVectors.length >
-              0 ? (
-                detectedVectors.map(
-                  (v, idx) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {detectedVectors.length > 0 ? (
+                detectedVectors.map((v, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      border: `1px solid ${
+                        v.type === 'child_payment'
+                          ? '#c4b5fd'
+                          : currentStatus.border
+                      }`,
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      color:
+                        v.type === 'child_payment'
+                          ? '#6d28d9'
+                          : currentStatus.theme
+                    }}
+                  >
                     <div
-                      key={idx}
                       style={{
-                        backgroundColor:
-                          '#ffffff',
-                        border:
-                          `1px solid ${
-                            v.type ===
-                            'child_payment'
-                              ? '#c4b5fd'
-                              : currentStatus.border
-                          }`,
-                        padding:
-                          '12px 14px',
-                        borderRadius:
-                          '10px',
-                        color:
-                          v.type ===
-                          'child_payment'
-                            ? '#6d28d9'
-                            : currentStatus.theme
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
                       }}
                     >
-
-                      <div
-                        style={{
-                          fontSize:
-                            '13px',
-                          fontWeight:
-                            '700',
-                          display:
-                            'flex',
-                          alignItems:
-                            'center',
-                          gap:
-                            '6px'
-                        }}
-                      >
-
-                        {v.type ===
-                        'child_payment' ? (
-                          <Gamepad2
-                            size={16}
-                            color="#7c3aed"
-                          />
-                        ) : (
-                          <AlertTriangle
-                            size={15}
-                            color={
-                              currentStatus.theme
-                            }
-                          />
-                        )}
-
-                        {v.title}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize:
-                            '12px',
-                          color:
-                            '#64748b',
-                          marginTop:
-                            '3px'
-                        }}
-                      >
-                        {v.detail}
-                      </div>
-
+                      {v.type === 'child_payment' ? (
+                        <Gamepad2 size={16} color="#7c3aed" />
+                      ) : (
+                        <AlertTriangle size={15} color={currentStatus.theme} />
+                      )}
+                      {v.title}
                     </div>
-                  )
-                )
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#64748b',
+                        marginTop: '3px'
+                      }}
+                    >
+                      {v.detail}
+                    </div>
+                  </div>
+                ))
               ) : (
                 <div
                   style={{
-                    backgroundColor:
-                      '#ffffff',
-                    border:
-                      '1px solid #a7f3d0',
-                    padding:
-                      '14px',
-                    borderRadius:
-                      '10px',
-                    fontSize:
-                      '13px',
-                    fontWeight:
-                      '600',
-                    color:
-                      '#065f46',
-                    display:
-                      'flex',
-                    alignItems:
-                      'center',
-                    gap:
-                      '8px'
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #a7f3d0',
+                    padding: '14px',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: '#065f46',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
                   }}
                 >
-                  <CheckCircle2
-                    size={18}
-                    color="#10b981"
-                  />
-
-                  No psychological
-                  coercion or guided
-                  manipulation detected.
+                  <CheckCircle2 size={18} color="#10b981" />
+                  No scam patterns, psychological coercion, or manipulation detected.
                 </div>
               )}
-
             </div>
           </div>
-
-          {/* =================================================
-              CHILD PROTECTION CARD
-          ================================================= */}
-
+          {/* CHILD PROTECTION CARD (WITH PIN TRIGGER) */}
           {childProtectionEnabled &&
-            (
-              activeScamType ===
-                'child_payment' ||
+            (activeScamType === 'child_payment' ||
               isGamingPayment ||
-              detectedVectors.some(
-                (v) =>
-                  v.type ===
-                  'child_payment'
-              )
-            ) && (
+              detectedVectors.some((v) => v.type === 'child_payment')) && (
               <div
                 style={{
-                  background:
-                    'linear-gradient(135deg,#faf5ff,#f5f3ff)',
-                  border:
-                    '1.5px solid #c4b5fd',
-                  borderRadius:
-                    '18px',
-                  padding:
-                    '22px'
+                  background: 'linear-gradient(135deg,#faf5ff,#f5f3ff)',
+                  border: '1.5px solid #c4b5fd',
+                  borderRadius: '18px',
+                  padding: '22px'
                 }}
               >
-
                 <div
                   style={{
-                    display:
-                      'flex',
-                    alignItems:
-                      'center',
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: '10px',
-                    marginBottom:
-                      '14px'
+                    marginBottom: '14px'
                   }}
                 >
-
                   <div
                     style={{
-                      width:
-                        '42px',
-                      height:
-                        '42px',
-                      borderRadius:
-                        '12px',
-                      background:
-                        '#ede9fe',
-                      display:
-                        'flex',
-                      alignItems:
-                        'center',
-                      justifyContent:
-                        'center'
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '12px',
+                      background: '#ede9fe',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}
                   >
-                    <Gamepad2
-                      size={22}
-                      color="#7c3aed"
-                    />
+                    <Gamepad2 size={22} color="#7c3aed" />
                   </div>
-
                   <div>
-                    <h3
-                      style={{
-                        margin: 0,
-                        fontSize:
-                          '16px',
-                        fontWeight:
-                          '800',
-                        color:
-                          '#4c1d95'
-                      }}
-                    >
-                      Child Payment
-                      Protection
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#4c1d95' }}>
+                      Family Protection Active
                     </h3>
-
-                    <div
-                      style={{
-                        fontSize:
-                          '11px',
-                        color:
-                          '#7c3aed',
-                        marginTop:
-                          '3px'
-                      }}
-                    >
-                      Gaming / virtual
-                      currency purchase
-                      detected
+                    <div style={{ fontSize: '11px', color: '#7c3aed', marginTop: '3px' }}>
+                      Gaming / virtual currency purchase detected
                     </div>
                   </div>
-
                 </div>
-
                 <div
                   style={{
-                    background:
-                      '#ffffff',
-                    border:
-                      '1px solid #ddd6fe',
-                    borderRadius:
-                      '12px',
-                    padding:
-                      '14px',
-                    marginBottom:
-                      '14px'
+                    background: '#ffffff',
+                    border: '1px solid #ddd6fe',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    marginBottom: '14px'
                   }}
                 >
-
-                  <div
-                    style={{
-                      display:
-                        'flex',
-                      gap: '9px',
-                      alignItems:
-                        'flex-start'
-                    }}
-                  >
-                    <ShieldAlert
-                      size={18}
-                      color="#7c3aed"
-                    />
-
+                  <div style={{ display: 'flex', gap: '9px', alignItems: 'flex-start' }}>
+                    <ShieldAlert size={18} color="#7c3aed" />
                     <div>
-                      <div
-                        style={{
-                          fontSize:
-                            '13px',
-                          fontWeight:
-                            '700',
-                          color:
-                            '#4c1d95'
-                        }}
-                      >
-                        Guardian verification
-                        recommended
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#4c1d95' }}>
+                        Guardian PIN required to authorize
                       </div>
-
-                      <p
-                        style={{
-                          margin:
-                            '5px 0 0',
-                          fontSize:
-                            '12px',
-                          color:
-                            '#64748b',
-                          lineHeight:
-                            '1.5'
-                        }}
-                      >
-                        This payment appears
-                        related to gaming,
-                        virtual currency or
-                        an in-app purchase.
-                        FraudShield can pause
-                        the payment until a
-                        parent or guardian
-                        confirms it.
+                      <p style={{ margin: '5px 0 0', fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
+                        This purchase requires the 4-digit Guardian PIN configured under Family Protection before it can complete.
                       </p>
                     </div>
                   </div>
-
                 </div>
-
-                {/* GUARDIAN APPROVAL */}
-                <label
+                {/* GUARDIAN APPROVAL TOGGLE WITH PIN CHALLENGE */}
+                <div
+                  onClick={handleGuardianApprovalToggle}
                   style={{
-                    display:
-                      'flex',
-                    alignItems:
-                      'center',
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: '10px',
-                    cursor:
-                      'pointer',
-                    background:
-                      guardianApproval
-                        ? '#f0fdf4'
-                        : '#ffffff',
-                    border:
-                      guardianApproval
-                        ? '1px solid #86efac'
-                        : '1px solid #ddd6fe',
-                    padding:
-                      '12px',
-                    borderRadius:
-                      '10px'
+                    cursor: 'pointer',
+                    background: guardianApproval ? '#f0fdf4' : '#ffffff',
+                    border: guardianApproval ? '1.5px solid #86efac' : '1.5px solid #ddd6fe',
+                    padding: '12px',
+                    borderRadius: '10px'
                   }}
                 >
-
                   <input
                     type="checkbox"
-                    checked={
-                      guardianApproval
-                    }
-                    onChange={(e) =>
-                      setGuardianApproval(
-                        e.target.checked
-                      )
-                    }
+                    readOnly
+                    checked={guardianApproval}
                     style={{
-                      width:
-                        '17px',
-                      height:
-                        '17px',
-                      accentColor:
-                        '#7c3aed'
+                      width: '17px',
+                      height: '17px',
+                      accentColor: '#7c3aed',
+                      cursor: 'pointer'
                     }}
                   />
-
                   <div>
                     <div
                       style={{
-                        fontSize:
-                          '12px',
-                        fontWeight:
-                          '700',
-                        color:
-                          guardianApproval
-                            ? '#166534'
-                            : '#4c1d95'
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        color: guardianApproval ? '#166534' : '#4c1d95'
                       }}
                     >
                       <UserCheck
                         size={14}
                         style={{
-                          verticalAlign:
-                            'middle',
-                          marginRight:
-                            '5px'
+                          verticalAlign: 'middle',
+                          marginRight: '5px'
                         }}
                       />
-
-                      Guardian approval
-                      confirmed
+                      {guardianApproval ? 'Guardian PIN Verified & Approved' : 'Verify Guardian PIN to Authorize'}
                     </div>
-
-                    <div
-                      style={{
-                        fontSize:
-                          '10px',
-                        color:
-                          '#64748b',
-                        marginTop:
-                          '2px'
-                      }}
-                    >
-                      Simulated family
-                      protection approval
+                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                      {guardianApproval ? 'Verified via Guardian PIN' : 'Click to open Guardian PIN entry'}
                     </div>
                   </div>
-
-                </label>
-
+                </div>
               </div>
             )}
-
           {/* AUTHORITY PROTOCOL */}
-          {isHighRisk &&
-            activeScamType ===
-              'authority' && (
-              <>
+          {isHighRisk && activeScamType === 'authority' && (
+            <>
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1.5px solid #fed7aa',
+                  borderRadius: '16px',
+                  padding: '20px'
+                }}
+              >
                 <div
                   style={{
-                    backgroundColor:
-                      '#ffffff',
-                    border:
-                      '1.5px solid #fed7aa',
-                    borderRadius:
-                      '16px',
-                    padding:
-                      '20px'
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#9a3412',
+                    fontWeight: '700',
+                    fontSize: '14px',
+                    marginBottom: '8px'
                   }}
                 >
-                  <div
-                    style={{
-                      display:
-                        'flex',
-                      alignItems:
-                        'center',
-                      gap: '8px',
-                      color:
-                        '#9a3412',
-                      fontWeight:
-                        '700',
-                      fontSize:
-                        '14px',
-                      marginBottom:
-                        '8px'
-                    }}
-                  >
-                    <Scale
-                      size={18}
-                      color="#ea580c"
-                    />
-
-                    Law Enforcement
-                    Impersonation
-                  </div>
-
-                  <p
-                    style={{
-                      fontSize:
-                        '13px',
-                      color:
-                        '#431407',
-                      lineHeight:
-                        '1.5',
-                      margin: 0
-                    }}
-                  >
-                    Genuine authorities
-                    do not demand UPI
-                    transfers, "safe
-                    account" payments or
-                    money over a phone
-                    call.
-                  </p>
+                  <FileText size={18} color="#ea580c" />
+                  Law Enforcement Impersonation Threat
                 </div>
-
-                <div
-                  style={{
-                    backgroundColor:
-                      '#f8fafc',
-                    border:
-                      '1px solid #cbd5e1',
-                    borderRadius:
-                      '16px',
-                    padding:
-                      '20px'
-                  }}
-                >
-                  <div
-                    style={{
-                      display:
-                        'flex',
-                      alignItems:
-                        'center',
-                      gap: '8px',
-                      color:
-                        '#1e293b',
-                      fontWeight:
-                        '700',
-                      fontSize:
-                        '14px',
-                      marginBottom:
-                        '12px'
-                    }}
-                  >
-                    <FileText
-                      size={18}
-                      color="#0284c7"
-                    />
-
-                    Independent
-                    Verification
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize:
-                        '12px',
-                      color:
-                        '#334155',
-                      lineHeight:
-                        '1.5'
-                    }}
-                  >
-                    Disconnect and
-                    independently verify
-                    the caller using an
-                    official source.
-                  </div>
-                </div>
-              </>
-            )}
-
-          {/* =================================================
-              ROOT CAUSE
-          ================================================= */}
-
+                <p style={{ fontSize: '13px', color: '#431407', lineHeight: '1.5', margin: 0 }}>
+                  Genuine authorities do not demand UPI transfers, "safe account" payments or money over a phone call.
+                </p>
+              </div>
+            </>
+          )}
+          {/* ROOT CAUSE ANALYSIS */}
           <div style={styles.card}>
-
             <h3
               style={{
-                margin:
-                  '0 0 8px 0',
-                fontSize:
-                  '16px',
-                fontWeight:
-                  '700',
-                color:
-                  '#0f172a',
-                display:
-                  'flex',
-                alignItems:
-                  'center',
-                gap:
-                  '8px'
+                margin: '0 0 8px 0',
+                fontSize: '16px',
+                fontWeight: '700',
+                color: '#0f172a',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
               }}
             >
-              <Layers
-                size={18}
-                color="#3b82f6"
-              />
-
-              Explainable Root-Cause
-              Analysis
+              <Layers size={18} color="#3b82f6" />
+              Explainable Risk & Root-Cause Summary
             </h3>
-
-            <p
-              style={{
-                fontSize:
-                  '13px',
-                color:
-                  '#475569',
-                lineHeight:
-                  '1.6',
-                margin:
-                  '0 0 16px 0'
-              }}
-            >
-
-              {detectedVectors.some(
-                (v) =>
-                  v.type ===
-                  'child_payment'
-              ) ? (
+            <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: '0 0 16px 0' }}>
+              {detectedVectors.some((v) => v.type === 'child_payment') ? (
                 <>
-                  FraudShield detected
-                  a possible gaming or
-                  child-related payment
-                  of{' '}
-                  <strong>
-                    ₹{formattedAmount}
-                  </strong>{' '}
-                  to{' '}
-                  <strong>
-                    {recipient}
-                  </strong>
-                  . Family Protection
-                  recommends guardian
-                  verification before
-                  payment.
+                  FraudShield identified a child/gaming transaction of <strong>₹{formattedAmount}</strong> to <strong>{recipient}</strong>. Family Protection has paused direct checkout until authorized with the Guardian PIN.
                 </>
               ) : isHighRisk ? (
                 <>
-                  FraudShield intercepted
-                  payment of{' '}
-                  <strong>
-                    ₹{formattedAmount}
-                  </strong>{' '}
-                  to{' '}
-                  <strong>
-                    {recipient}
-                  </strong>{' '}
-                  because active
-                  social-engineering
-                  vectors were detected.
-                </>
-              ) : riskScore >= 30 ? (
-                <>
-                  Caution advised for
-                  payment of{' '}
-                  <strong>
-                    ₹{formattedAmount}
-                  </strong>{' '}
-                  to{' '}
-                  <strong>
-                    {recipient}
-                  </strong>
-                  . Moderate risk
-                  signals were detected.
+                  FraudShield intercepted payment of <strong>₹{formattedAmount}</strong> to <strong>{recipient}</strong> because high-risk social engineering vectors were triggered during evaluation.
                 </>
               ) : (
                 <>
-                  The conversational
-                  stream associated with
-                  this payment exhibits
-                  natural, unpressured
-                  dialogue with no
-                  significant manipulation
-                  detected.
+                  Conversational stream exhibits benign transaction dialogue. No active coercion or scam traps identified.
                 </>
               )}
-
             </p>
-
             {/* RECOMMENDATION */}
             <div
               style={{
-                backgroundColor:
-                  currentStatus.themeBg,
-                borderLeft:
-                  `4px solid ${currentStatus.theme}`,
-                padding:
-                  '12px 16px',
-                borderRadius:
-                  '4px 8px 8px 4px',
-                marginBottom:
-                  '24px'
+                backgroundColor: currentStatus.themeBg,
+                borderLeft: `4px solid ${currentStatus.theme}`,
+                padding: '12px 16px',
+                borderRadius: '4px 8px 8px 4px',
+                marginBottom: '24px'
               }}
             >
-
-              <div
-                style={{
-                  fontWeight:
-                    '700',
-                  fontSize:
-                    '13px',
-                  color:
-                    currentStatus.theme,
-                  marginBottom:
-                    '2px'
-                }}
-              >
+              <div style={{ fontWeight: '700', fontSize: '13px', color: currentStatus.theme, marginBottom: '2px' }}>
                 Recommended Action:
               </div>
-
-              <div
-                style={{
-                  fontSize:
-                    '13px',
-                  color:
-                    currentStatus.subtext
-                }}
-              >
-                {detectedVectors.some(
-                  (v) =>
-                    v.type ===
-                    'child_payment'
-                )
+              <div style={{ fontSize: '13px', color: currentStatus.subtext }}>
+                {detectedVectors.some((v) => v.type === 'child_payment')
                   ? guardianApproval
-                    ? 'Guardian approval recorded. Continue only after verifying the purchase and recipient.'
-                    : 'Pause payment and obtain guardian approval before completing the gaming purchase.'
+                    ? 'Guardian PIN verified. Safe to complete transaction.'
+                    : 'Enter Guardian PIN to authorize this gaming transaction.'
                   : currentStatus.recommendation}
               </div>
-
             </div>
-
             {/* ACTION BUTTONS */}
-            <div
-              style={{
-                display:
-                  'flex',
-                gap: '12px',
-                flexWrap:
-                  'wrap'
-              }}
-            >
-
-              {/* HIGH RISK */}
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               {isHighRisk ? (
                 <>
                   <button
                     type="button"
                     onClick={() => {
-                      alert(
-                        'Payment cancelled. Transaction and risk signals logged to FraudShield.'
-                      );
-
-                      if (onBack)
-                        onBack();
+                      alert('Payment cancelled. Threat verdict logged to FraudShield.');
+                      if (onBack) onBack();
                     }}
                     style={{
-                      flex:
-                        1.5,
-                      backgroundColor:
-                        '#ef4444',
-                      color:
-                        '#ffffff',
-                      border:
-                        'none',
-                      padding:
-                        '14px',
-                      borderRadius:
-                        '12px',
-                      fontWeight:
-                        '700',
-                      fontSize:
-                        '13px',
-                      cursor:
-                        'pointer',
-                      display:
-                        'flex',
-                      alignItems:
-                        'center',
-                      justifyContent:
-                        'center',
-                      gap:
-                        '8px'
+                      flex: 1.5,
+                      backgroundColor: '#ef4444',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '14px',
+                      borderRadius: '12px',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
                     }}
                   >
-                    <XCircle
-                      size={16}
-                    />
-
+                    <XCircle size={16} />
                     Cancel Payment
                   </button>
-
                   <button
                     type="button"
                     onClick={() =>
-                      alert(
-                        detectedVectors
-                          .map(
-                            (v) =>
-                              `• ${v.title}`
-                          )
-                          .join('\n')
-                      )
+                      alert(detectedVectors.map((v) => `• ${v.title}`).join('\n'))
                     }
                     style={{
                       flex: 1,
-                      backgroundColor:
-                        '#f1f5f9',
-                      color:
-                        '#334155',
-                      border:
-                        '1px solid #cbd5e1',
-                      padding:
-                        '14px',
-                      borderRadius:
-                        '12px',
-                      fontWeight:
-                        '600',
-                      fontSize:
-                        '13px',
-                      cursor:
-                        'pointer',
-                      display:
-                        'flex',
-                      alignItems:
-                        'center',
-                      justifyContent:
-                        'center',
-                      gap:
-                        '6px'
+                      backgroundColor: '#f1f5f9',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      padding: '14px',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
                     }}
                   >
-                    <HelpCircle
-                      size={16}
-                    />
-
-                    Review Factors
+                    <HelpCircle size={16} />
+                    Review Risk Factors
                   </button>
                 </>
-              ) : detectedVectors.some(
-                  (v) =>
-                    v.type ===
-                    'child_payment'
-                ) ? (
+              ) : detectedVectors.some((v) => v.type === 'child_payment') ? (
                 <>
-                  {/* CHILD PAYMENT */}
                   <button
                     type="button"
-                    disabled={
-                      !guardianApproval
-                    }
                     onClick={() => {
-                      alert(
-                        `Guardian approval verified. Proceeding with gaming payment of ₹${formattedAmount}.`
-                      );
+                      if (!guardianApproval) {
+                        handleProtectedPay('child_payment_proceed');
+                      } else {
+                        alert(`Guardian approved. Proceeding with gaming payment of ₹${formattedAmount}.`);
+                      }
                     }}
                     style={{
-                      flex:
-                        1.5,
-                      backgroundColor:
-                        guardianApproval
-                          ? '#7c3aed'
-                          : '#cbd5e1',
-                      color:
-                        '#ffffff',
-                      border:
-                        'none',
-                      padding:
-                        '14px',
-                      borderRadius:
-                        '12px',
-                      fontWeight:
-                        '700',
-                      fontSize:
-                        '13px',
-                      cursor:
-                        guardianApproval
-                          ? 'pointer'
-                          : 'not-allowed',
-                      display:
-                        'flex',
-                      alignItems:
-                        'center',
-                      justifyContent:
-                        'center',
-                      gap:
-                        '8px'
+                      flex: 1.5,
+                      backgroundColor: guardianApproval ? '#7c3aed' : '#4f46e5',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '14px',
+                      borderRadius: '12px',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
                     }}
                   >
-                    <UserCheck
-                      size={16}
-                    />
-
-                    {guardianApproval
-                      ? 'Guardian Approved — Proceed'
-                      : 'Guardian Approval Required'}
+                    <UserCheck size={16} />
+                    {guardianApproval ? 'Proceed with Payment' : 'Enter Guardian PIN & Pay'}
                   </button>
-
                   <button
                     type="button"
                     onClick={() => {
-                      alert(
-                        'Gaming payment cancelled. Family Protection remains enabled.'
-                      );
-
-                      if (onBack)
-                        onBack();
+                      alert('Payment cancelled. Family Protection remains active.');
+                      if (onBack) onBack();
                     }}
                     style={{
-                      backgroundColor:
-                        '#f1f5f9',
-                      color:
-                        '#64748b',
-                      border:
-                        '1px solid #e2e8f0',
-                      padding:
-                        '14px 20px',
-                      borderRadius:
-                        '12px',
-                      fontWeight:
-                        '600',
-                      fontSize:
-                        '13px',
-                      cursor:
-                        'pointer'
+                      backgroundColor: '#f1f5f9',
+                      color: '#64748b',
+                      border: '1px solid #e2e8f0',
+                      padding: '14px 20px',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      cursor: 'pointer'
                     }}
                   >
                     Cancel
@@ -2881,87 +1555,63 @@ export default function PaymentRiskDemo({ onBack }) {
                 </>
               ) : (
                 <>
-                  {/* NORMAL SAFE PAYMENT */}
                   <button
                     type="button"
-                    onClick={() =>
-                      alert(
-                        `Proceeding to secure UPI PIN entry for ₹${formattedAmount}.`
-                      )
-                    }
+                    onClick={() => handleProtectedPay('safe_payment')}
                     style={{
-                      flex:
-                        1.5,
-                      backgroundColor:
-                        '#10b981',
-                      color:
-                        '#ffffff',
-                      border:
-                        'none',
-                      padding:
-                        '14px',
-                      borderRadius:
-                        '12px',
-                      fontWeight:
-                        '700',
-                      fontSize:
-                        '13px',
-                      cursor:
-                        'pointer',
-                      display:
-                        'flex',
-                      alignItems:
-                        'center',
-                      justifyContent:
-                        'center',
-                      gap:
-                        '8px'
+                      flex: 1.5,
+                      backgroundColor: '#10b981',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '14px',
+                      borderRadius: '12px',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
                     }}
                   >
-                    <Lock
-                      size={16}
-                    />
-
+                    <Lock size={16} />
                     Proceed to Pay
-                    <ArrowRight
-                      size={16}
-                    />
+                    <ArrowRight size={16} />
                   </button>
-
                   <button
                     type="button"
                     onClick={() => {
-                      if (onBack)
-                        onBack();
+                      if (onBack) onBack();
                     }}
                     style={{
-                      backgroundColor:
-                        '#f1f5f9',
-                      color:
-                        '#64748b',
-                      border:
-                        '1px solid #e2e8f0',
-                      padding:
-                        '14px 20px',
-                      borderRadius:
-                        '12px',
-                      fontWeight:
-                        '600',
-                      fontSize:
-                        '13px',
-                      cursor:
-                        'pointer'
+                      backgroundColor: '#f1f5f9',
+                      color: '#64748b',
+                      border: '1px solid #e2e8f0',
+                      padding: '14px 20px',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      cursor: 'pointer'
                     }}
                   >
                     Cancel
                   </button>
                 </>
               )}
-
             </div>
           </div>
         </div>
       )}
+      {/* GUARDIAN PIN VERIFICATION MODAL */}
+      <GuardianPinModal
+        isOpen={showPinModal}
+        correctPin={localStorage.getItem('fs_guardian_pin') || '1234'}
+        onClose={() => {
+          setShowPinModal(false);
+          setPendingPinAction(null);
+        }}
+        onSuccess={onPinSuccess}
+      />
     </div>
   );
 }
