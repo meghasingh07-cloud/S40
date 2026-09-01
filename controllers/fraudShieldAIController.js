@@ -1,0 +1,13 @@
+const ai=require("../services/fraudShieldAIService");
+const wrap=(fn,msg)=>(req,res)=>Promise.resolve(fn(req,res)).catch(error=>{console.error(msg,error.message);res.status(503).json({message:msg,error:error.message});});
+const accountAnalysis=wrap(async(req,res)=>res.json(await ai.analyzeAccount(req.user.userId)),"FraudShield AI account analysis unavailable");
+const paymentInitialAnalysis=wrap(async(req,res)=>res.json(await ai.analyzePaymentInitial(req.user.userId,req.body)),"FraudShield AI initial payment analysis unavailable");
+const paymentAnalysis=wrap(async(req,res)=>res.json(await ai.analyzePayment(req.user.userId,req.body,req.body.initial_analysis||null)),"FraudShield AI payment analysis unavailable");
+const voiceAnalysis=wrap(async(req,res)=>res.json(await ai.analyzeVoice(req.body.transcript||"",req.body.language||"en-IN")),"FraudShield AI voice analysis unavailable");
+const messageAnalysis=wrap(async(req,res)=>res.json(await ai.analyzeMessage(req.body.text||"")),"FraudShield AI message analysis unavailable");
+const textAnalysis=wrap(async(req,res)=>res.json(await ai.analyzeText(req.body.text||"")),"FraudShield AI text analysis unavailable");
+const intelligenceSearch=wrap(async(req,res)=>res.json(await ai.intelligenceSearch(req.body.query||"",req.body.kind||"auto")),"Fraud intelligence unavailable");
+const intelligenceStats=wrap(async(req,res)=>res.json(await ai.intelligenceStats()),"Fraud intelligence stats unavailable");
+const transcribe=wrap(async(req,res)=>{if(!req.body?.audio_base64)return res.status(400).json({message:"Audio payload required"});const buffer=Buffer.from(req.body.audio_base64,"base64");if(buffer.length>10*1024*1024)return res.status(413).json({message:"Audio file too large"});res.json(await ai.transcribeAudio(buffer,req.body.filename||"call.webm",req.body.mime_type||"audio/webm"));},"Call transcription unavailable");
+const health=wrap(async(req,res)=>res.json(await ai.health()),"FraudShield AI health unavailable");
+module.exports={accountAnalysis,paymentInitialAnalysis,paymentAnalysis,voiceAnalysis,messageAnalysis,textAnalysis,intelligenceSearch,intelligenceStats,transcribe,health};

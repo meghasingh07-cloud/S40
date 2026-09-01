@@ -1,0 +1,42 @@
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+const db = require('./services/localDb');
+const authRoutes = require('./routes/authRoutes');
+const transactionRoutes = require('./routes/transactionRoutes');
+const scamRoutes = require('./routes/scamRoutes');
+const messageRoutes = require('./routes/messageRoutes');
+const messageCheckRoutes = require('./routes/messageCheckRoutes1');
+const urlRoutes = require('./routes/urlRoutes');
+const familyRoutes = require('./routes/familyRoutes');
+const fraudShieldAIRoutes = require('./routes/fraudShieldAIRoutes');
+
+const app = express();
+app.disable('x-powered-by');
+db.ensureDb();
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({ origin(origin, callback) { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new Error('Origin not allowed')); }, credentials: true }));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'microphone=(self)');
+  next();
+});
+app.use(express.json({ limit: '12mb' }));
+const rateBuckets = new Map();
+function rateLimit(windowMs, max) { return (req, res, next) => { const key = `${req.ip}:${req.path}`; const now = Date.now(); const b = rateBuckets.get(key); if (!b || now - b.start > windowMs) { rateBuckets.set(key, { start: now, count: 1 }); return next(); } b.count++; if (b.count > max) return res.status(429).json({ message: 'Too many requests. Try again shortly.' }); return next(); }; }
+app.use('/api/auth', rateLimit(60_000, 20));
+app.use('/api/ai', rateLimit(60_000, 120));
+app.use('/api/auth', authRoutes);
+app.use('/api/transactions', transactionRoutes);
+app.use('/api/scam', scamRoutes);
+app.use('/api/message', messageRoutes);
+app.use('/api/message', messageCheckRoutes);
+app.use('/api/url', urlRoutes);
+app.use('/api/family', familyRoutes);
+app.use('/api/ai', fraudShieldAIRoutes);
+app.get('/', (req, res) => res.json({ message: 'FraudShield backend is running', database: 'local-json' }));
+app.get('/api/health', (req, res) => res.json({ ok: true, service: 'FraudShield API', database: 'local-json', database_file: db.DB_FILE, ai_url: process.env.FRAUDSHIELD_AI_URL || 'http://127.0.0.1:8000' }));
+const PORT = Number(process.env.PORT || 5050);
+app.listen(PORT, () => console.log(`[FraudShield] API server listening on http://127.0.0.1:${PORT}`));

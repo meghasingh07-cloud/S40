@@ -1,0 +1,1496 @@
+/* =========================================================
+   PAYMENT RISK ANALYZER - DASHBOARD THEME
+   Uses the same CSS variables and design system as Dashboard
+========================================================= */
+
+:root {
+  --bg: #f4f6fb;
+  --sidebar: #12163a;
+  --sidebar-active: #2e7d5b;
+
+  --green: #1fa971;
+  --green-light: #e7f7ef;
+
+  --blue: #3b6fe0;
+  --blue-light: #eaf0fe;
+
+  --orange: #f5a524;
+  --orange-light: #fff3e0;
+
+  --purple: #8a63f0;
+  --purple-light: #f1ecfe;
+
+  --red: #e5484d;
+  --red-light: #fdeaea;
+
+  --text-dark: #1c2033;
+  --text-mid: #6b7189;
+  --text-light: #9fa3b8;
+
+  --border: #eaecf3;
+  --card: #ffffff;
+
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+}
+
+/* =========================================================
+   APP LAYOUT
+========================================================= */
+
+.app {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text-dark);
+}
+
+/* =========================================================
+   SIDEBAR (using Dashboard's full sidebar design)
+========================================================= */
+
+.sidebar {
+  width: 230px;
+  min-width: 230px;
+  min-height: 100vh;
+
+  background: var(--sidebar);
+  color: #c8cbe0;
+
+  display: flex;
+  flex-direction: column;
+
+  padding: 20px 14px;
+
+  flex-shrink: 0;
+}
+
+.brand-mark {
+  display: none;
+}
+
+/* Logo */
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 6px 10px 22px;
+}
+
+.logo-icon {
+  width: 34px;
+  height: 34px;
+
+  border-radius: 9px;
+
+  background: var(--green);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.logo-text {
+  line-height: 1.1;
+}
+
+.logo-text .top {
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.logo-text .top span {
+  color: var(--green);
+}
+
+.logo-text .sub {
+  margin-top: 3px;
+
+  font-size: 10px;
+  color: #8d92b3;
+
+  letter-spacing: 0.5px;
+}
+
+/* Navigation */
+
+.nav {
+  list-style: none;
+
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  flex: 1;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  scrollbar-width: thin;
+}
+
+.nav li {
+  width: 100%;
+}
+
+.nav-item {
+  display: none;
+}
+
+.nav li a {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 12px;
+
+  border-radius: 9px;
+
+  color: #aeb2cc;
+  text-decoration: none;
+
+  font-size: 13.5px;
+  font-weight: 500;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.nav li a .ic {
+  width: 18px;
+  min-width: 18px;
+
+  text-align: center;
+
+  font-size: 14px;
+}
+
+.nav li a:hover {
+  background: #1c2050;
+  color: #ffffff;
+}
+
+.nav li a.active {
+  background: var(--sidebar-active);
+  color: #ffffff;
+}
+
+/* Protected box */
+
+.protect-box {
+  background: #1a1e46;
+
+  border-radius: 12px;
+
+  padding: 14px;
+
+  margin-top: 14px;
+
+  text-align: center;
+}
+
+.protect-box .badge {
+  width: 34px;
+  height: 34px;
+
+  border-radius: 50%;
+
+  background: var(--green);
+  color: #ffffff;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin: 0 auto 8px;
+
+  font-size: 15px;
+}
+
+.protect-box .title {
+  font-size: 12.5px;
+  font-weight: 700;
+
+  color: #ffffff;
+}
+
+.protect-box .desc {
+  margin-top: 4px;
+
+  font-size: 10.5px;
+  line-height: 1.4;
+
+  color: #9296b8;
+}
+
+/* User box */
+
+.user-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 12px 8px 4px;
+
+  margin-top: 10px;
+
+  border-top: 1px solid #262a55;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+
+  border-radius: 50%;
+
+  background: linear-gradient(135deg, #8a63f0, #3b6fe0);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 13px;
+  font-weight: 700;
+
+  color: #ffffff;
+
+  flex-shrink: 0;
+}
+
+.user-box .name {
+  font-size: 13px;
+  font-weight: 600;
+
+  color: #ffffff;
+}
+
+.user-box .role {
+  margin-top: 2px;
+
+  font-size: 10.5px;
+
+  color: #8d92b3;
+}
+
+/* =========================================================
+   MAIN CONTENT
+========================================================= */
+
+.main {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+
+  min-width: 0;
+  min-height: 100vh;
+}
+
+/* =========================================================
+   TOPBAR (using Dashboard's white topbar)
+========================================================= */
+
+.topbar {
+  min-height: 68px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 20px;
+
+  padding: 16px 28px;
+
+  background: #ffffff;
+
+  border-bottom: 1px solid var(--border);
+
+  flex-shrink: 0;
+}
+
+.back-btn {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-mid);
+
+  padding: 9px 13px;
+  border-radius: 9px;
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.back-btn:hover {
+  background: #f8f9fc;
+  color: var(--text-dark);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  font-weight: 700;
+  font-size: 17px;
+
+  color: var(--text-dark);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+
+  gap: 16px;
+
+  margin-left: auto;
+}
+
+.protection-chip {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  font-size: 12px;
+}
+
+.protection-chip .dot {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+
+  background: var(--green);
+}
+
+.chip-title {
+  color: var(--text-dark);
+  font-weight: 600;
+}
+
+.chip-sub {
+  color: var(--text-light);
+}
+
+/* =========================================================
+   CONTENT
+========================================================= */
+
+.content {
+  padding: 22px 28px;
+
+  max-width: 1400px;
+
+  width: 100%;
+
+  margin: 0 auto;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 20px;
+}
+
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+
+  gap: 16px;
+
+  margin-bottom: 8px;
+}
+
+.page-icon {
+  width: 50px;
+  height: 50px;
+
+  border-radius: 11px;
+
+  background: var(--blue-light);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--blue);
+
+  flex-shrink: 0;
+
+  font-size: 24px;
+}
+
+.page-heading h1 {
+  margin: 0;
+
+  font-size: 22px;
+
+  font-weight: 800;
+
+  color: var(--text-dark);
+}
+
+.page-heading p {
+  margin: 4px 0 0;
+
+  color: var(--text-mid);
+
+  font-size: 13.5px;
+}
+
+/* =========================================================
+   GRIDS
+========================================================= */
+
+.grid-top,
+.grid-bottom {
+  display: grid;
+
+  grid-template-columns:
+    minmax(320px, 1fr)
+    minmax(520px, 1.55fr);
+
+  gap: 22px;
+
+  margin-bottom: 22px;
+
+  align-items: stretch;
+}
+
+/* =========================================================
+   CARD (using Dashboard's card design)
+========================================================= */
+
+.card {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: var(--radius);
+
+  padding: 22px 22px 24px;
+
+  min-width: 0;
+
+  box-shadow: 0 1px 3px rgba(28, 32, 51, 0.04);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  color: var(--text-mid);
+
+  font-size: 11.5px;
+
+  font-weight: 700;
+
+  letter-spacing: 0.06em;
+
+  margin-bottom: 18px;
+}
+
+.card-header.blue {
+  color: var(--blue);
+}
+
+.card-header.red {
+  color: var(--red);
+}
+
+/* =========================================================
+   INPUTS (matching Dashboard's input styling)
+========================================================= */
+
+.field-label {
+  display: block;
+
+  font-size: 12.5px;
+
+  color: var(--text-mid);
+
+  font-weight: 500;
+
+  margin-bottom: 8px;
+}
+
+.input-row {
+  position: relative;
+
+  margin-bottom: 18px;
+}
+
+.text-input {
+  width: 100%;
+
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: 10px;
+
+  padding: 12px 40px 12px 14px;
+
+  color: var(--text-dark);
+
+  font-size: 15px;
+
+  font-weight: 500;
+
+  outline: none;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.text-input::placeholder {
+  color: var(--text-light);
+}
+
+.text-input:focus {
+  border-color: var(--blue);
+
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+
+.recipient-input {
+  padding: 12px 14px 12px 40px;
+
+  font-size: 15px;
+
+  font-weight: 500;
+}
+
+.input-suffix,
+.input-prefix {
+  position: absolute;
+
+  top: 50%;
+
+  transform: translateY(-50%);
+
+  color: var(--text-light);
+
+  pointer-events: none;
+}
+
+.input-suffix {
+  right: 14px;
+}
+
+.input-prefix {
+  left: 14px;
+}
+
+/* =========================================================
+   RISK FACTORS / CHECKBOXES
+========================================================= */
+
+.risk-factors-label {
+  font-size: 11.5px;
+
+  font-weight: 700;
+
+  letter-spacing: 0.06em;
+
+  color: var(--text-mid);
+
+  margin: 4px 0 12px;
+}
+
+.factor-list {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 10px;
+
+  margin-bottom: 20px;
+}
+
+.factor-row {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: 11px;
+
+  padding: 11px 14px;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+.factor-row:hover {
+  background: #fafbfe;
+
+  border-color: #dfe3ef;
+}
+
+.factor-row:active {
+  transform: scale(0.995);
+}
+
+.factor-row:focus-visible {
+  outline: 2px solid var(--blue);
+
+  outline-offset: 2px;
+}
+
+.factor-active {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+
+.factor-icon {
+  width: 34px;
+  height: 34px;
+
+  border-radius: 9px;
+
+  background: var(--blue-light);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--blue);
+
+  flex-shrink: 0;
+}
+
+.factor-text {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 2px;
+
+  min-width: 0;
+}
+
+.factor-title {
+  font-size: 13px;
+
+  font-weight: 600;
+
+  color: var(--text-dark);
+}
+
+.factor-subtitle {
+  font-size: 11.5px;
+
+  color: var(--text-mid);
+}
+
+.checkbox {
+  width: 20px;
+  height: 20px;
+
+  border-radius: 5px;
+
+  border: 1.5px solid var(--border);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.checkbox.checked {
+  background: var(--blue);
+
+  border-color: var(--blue);
+
+  color: white;
+}
+
+/* =========================================================
+   ANALYZE BUTTON
+========================================================= */
+
+.analyze-btn {
+  width: 100%;
+
+  background: var(--blue);
+
+  border: none;
+
+  border-radius: 10px;
+
+  color: white;
+
+  font-size: 14px;
+
+  font-weight: 700;
+
+  padding: 13px 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+.analyze-btn:hover {
+  background: #2a5acc;
+}
+
+.analyze-btn:active {
+  transform: scale(0.99);
+}
+
+.analyze-btn:disabled {
+  cursor: not-allowed;
+
+  opacity: 0.6;
+}
+
+/* =========================================================
+   RISK CARD / GAUGE
+========================================================= */
+
+.risk-main {
+  display: flex;
+
+  gap: 32px;
+
+  align-items: center;
+
+  margin-bottom: 24px;
+
+  flex-wrap: wrap;
+}
+
+.gauge-wrap {
+  position: relative;
+
+  width: 220px;
+  height: 220px;
+
+  flex-shrink: 0;
+}
+
+.risk-gauge-svg {
+  display: block;
+}
+
+.gauge-center {
+  position: absolute;
+
+  inset: 0;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  justify-content: center;
+}
+
+.gauge-score {
+  font-size: 42px;
+
+  font-weight: 800;
+
+  color: var(--text-dark);
+
+  line-height: 1;
+}
+
+.gauge-max {
+  font-size: 12px;
+
+  color: var(--text-light);
+
+  margin-top: 2px;
+}
+
+.gauge-pill {
+  margin-top: 10px;
+
+  padding: 6px 12px;
+
+  border-radius: 6px;
+
+  font-size: 10px;
+
+  font-weight: 800;
+
+  letter-spacing: 0.04em;
+}
+
+.risk-summary {
+  flex: 1;
+
+  min-width: 220px;
+}
+
+.risk-level-label {
+  font-size: 11.5px;
+
+  color: var(--text-mid);
+
+  font-weight: 700;
+
+  letter-spacing: 0.05em;
+
+  margin-bottom: 6px;
+}
+
+.risk-level-value {
+  display: flex;
+
+  align-items: center;
+
+  gap: 8px;
+
+  font-size: 20px;
+
+  font-weight: 800;
+
+  margin-bottom: 10px;
+
+  color: var(--text-dark);
+}
+
+.risk-desc {
+  font-size: 13px;
+
+  color: var(--text-mid);
+
+  line-height: 1.6;
+
+  margin: 0 0 16px;
+}
+
+/* =========================================================
+   RISK SCALE / SLIDER
+========================================================= */
+
+.slider-track {
+  position: relative;
+
+  height: 6px;
+
+  border-radius: 4px;
+
+  margin-bottom: 6px;
+
+  background: var(--border);
+}
+
+.slider-gradient {
+  position: absolute;
+
+  inset: 0;
+
+  border-radius: 4px;
+
+  background:
+    linear-gradient(
+      90deg,
+      var(--green),
+      var(--orange),
+      var(--red)
+    );
+}
+
+.slider-thumb {
+  position: absolute;
+
+  top: 50%;
+
+  width: 0;
+  height: 0;
+
+  border-left: 7px solid transparent;
+
+  border-right: 7px solid transparent;
+
+  border-bottom: 10px solid var(--text-dark);
+
+  transform: translate(-50%, -160%);
+
+  transition: left 0.6s ease;
+}
+
+.slider-labels {
+  display: flex;
+
+  justify-content: space-between;
+
+  font-size: 11px;
+
+  color: var(--text-light);
+}
+
+/* =========================================================
+   SIGNALS / DIMENSIONS
+========================================================= */
+
+.signals-label {
+  font-size: 11.5px;
+
+  color: var(--text-mid);
+
+  font-weight: 700;
+
+  letter-spacing: 0.05em;
+
+  margin-bottom: 12px;
+}
+
+.signals-grid {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 12px;
+
+  margin-bottom: 20px;
+}
+
+.no-signals,
+.no-explanation {
+  grid-column: 1 / -1;
+
+  color: var(--text-mid);
+
+  font-size: 13px;
+
+  padding: 8px 0;
+}
+
+.signal-item {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: 11px;
+
+  padding: 12px 14px;
+}
+
+.signal-icon {
+  width: 36px;
+  height: 36px;
+
+  border-radius: 9px;
+
+  background: var(--blue-light);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--blue);
+
+  flex-shrink: 0;
+}
+
+.signal-title {
+  font-size: 13px;
+
+  font-weight: 700;
+
+  color: var(--text-dark);
+}
+
+.signal-impact {
+  font-size: 11px;
+
+  font-weight: 600;
+
+  margin-top: 2px;
+
+  color: var(--text-mid);
+}
+
+/* =========================================================
+   WHY BOX / INFO PANEL
+========================================================= */
+
+.why-box {
+  display: flex;
+
+  align-items: flex-start;
+
+  gap: 14px;
+
+  background: var(--blue-light);
+
+  border: 1px solid #cbe9f9;
+
+  border-radius: 11px;
+
+  padding: 18px 20px;
+
+  position: relative;
+
+  overflow: hidden;
+}
+
+.why-icon {
+  color: var(--blue);
+
+  flex-shrink: 0;
+
+  font-size: 20px;
+}
+
+.why-title {
+  display: flex;
+
+  align-items: center;
+
+  gap: 7px;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+  color: var(--blue);
+
+  letter-spacing: 0.04em;
+
+  margin-bottom: 6px;
+}
+
+.why-text {
+  font-size: 13px;
+
+  color: var(--text-dark);
+
+  line-height: 1.6;
+
+  margin: 0;
+}
+
+/* =========================================================
+   EXPLAINABLE DECISION
+========================================================= */
+
+.explain-list {
+  display: flex;
+
+  flex-direction: column;
+}
+
+.explain-row {
+  display: grid;
+
+  grid-template-columns:
+    46px
+    auto
+    minmax(0, 1fr);
+
+  align-items: center;
+
+  gap: 14px;
+
+  padding: 13px 0;
+
+  border-bottom: 1px solid var(--border);
+
+  font-size: 13px;
+}
+
+.explain-row:last-child {
+  border-bottom: none;
+}
+
+.explain-delta {
+  color: var(--orange);
+
+  font-weight: 800;
+
+  background: var(--orange-light);
+
+  border-radius: 6px;
+
+  padding: 3px 0;
+
+  text-align: center;
+
+  font-size: 12px;
+}
+
+.explain-title {
+  font-weight: 700;
+
+  color: var(--text-dark);
+
+  white-space: nowrap;
+}
+
+.explain-detail {
+  color: var(--text-mid);
+
+  min-width: 0;
+
+  font-size: 12px;
+}
+
+/* =========================================================
+   RECOMMENDATION / DECISION CARD
+========================================================= */
+
+.recommendation-card {
+  background: var(--red-light);
+
+  border: 1px solid #f5d0d2;
+
+  position: relative;
+
+  overflow: hidden;
+}
+
+.recommendation-low {
+  border-color: #cdf0dd;
+
+  background: var(--green-light);
+}
+
+.recommendation-medium {
+  border-color: #fbe8c8;
+
+  background: var(--orange-light);
+}
+
+.recommendation-high {
+  border-color: #f5d0d2;
+
+  background: var(--red-light);
+}
+
+.rec-title {
+  color: var(--red);
+
+  font-size: 20px;
+
+  font-weight: 800;
+
+  margin: 4px 0 6px;
+
+  max-width: 560px;
+}
+
+.recommendation-low .rec-title {
+  color: var(--green);
+}
+
+.recommendation-medium .rec-title {
+  color: var(--orange);
+}
+
+.rec-sub {
+  color: var(--text-mid);
+
+  font-size: 13px;
+
+  line-height: 1.5;
+
+  margin: 0 0 24px;
+
+  max-width: 560px;
+}
+
+.rec-actions {
+  display: flex;
+
+  gap: 34px;
+
+  position: relative;
+
+  z-index: 2;
+}
+
+.rec-action {
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  gap: 8px;
+
+  color: var(--text-mid);
+
+  font-size: 12px;
+
+  font-weight: 600;
+
+  background: none;
+
+  border: none;
+
+  cursor: pointer;
+
+  padding: 4px 0;
+
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.rec-action:hover {
+  color: var(--text-dark);
+
+  transform: translateY(-2px);
+}
+
+.rec-fingerprint {
+  position: absolute;
+
+  right: 10px;
+
+  bottom: -10px;
+
+  opacity: 0.1;
+
+  pointer-events: none;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 1200px) {
+  .content {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .grid-top,
+  .grid-bottom {
+    grid-template-columns: 1fr 1.25fr;
+  }
+
+  .risk-main {
+    gap: 20px;
+  }
+
+  .gauge-wrap {
+    width: 190px;
+    height: 190px;
+  }
+
+  .risk-gauge-svg {
+    width: 190px;
+    height: 190px;
+  }
+}
+
+@media (max-width: 1050px) {
+  .grid-top,
+  .grid-bottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+
+  .topbar {
+    padding: 12px 16px;
+  }
+
+  .content {
+    padding: 16px;
+
+    gap: 16px;
+  }
+
+  .page-heading h1 {
+    font-size: 18px;
+  }
+
+  .page-heading p {
+    font-size: 12px;
+  }
+
+  .risk-main {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .risk-summary {
+    width: 100%;
+  }
+
+  .signals-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .explain-row {
+    grid-template-columns: 46px 1fr;
+  }
+
+  .explain-detail {
+    grid-column: 2;
+  }
+
+  .rec-actions {
+    gap: 20px;
+
+    flex-wrap: wrap;
+  }
+
+  .rec-fingerprint {
+    opacity: 0.05;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar {
+    padding: 10px 12px;
+  }
+
+  .content {
+    padding: 12px;
+
+    gap: 12px;
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .page-heading {
+    gap: 12px;
+  }
+
+  .page-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .gauge-wrap {
+    width: 160px;
+    height: 160px;
+  }
+
+  .risk-gauge-svg {
+    width: 160px;
+    height: 160px;
+  }
+
+  .gauge-score {
+    font-size: 36px;
+  }
+
+  .rec-title {
+    font-size: 18px;
+  }
+
+  .rec-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* =========================================================
+   ACCESSIBILITY
+========================================================= */
+
+button,
+a,
+.factor-row,
+.analyze-btn {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+.analyze-btn:focus-visible {
+  outline: 2px solid var(--blue);
+
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   REDUCED MOTION
+========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}

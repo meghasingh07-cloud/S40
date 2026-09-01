@@ -1,0 +1,15 @@
+const express=require("express");
+const protect=require("../middleware/authMiddleware");
+const c=require("../controllers/fraudShieldAIController");
+const router=express.Router();
+router.get("/health",c.health);
+router.get("/account-analysis",protect,c.accountAnalysis);
+router.post("/payment-initial",protect,c.paymentInitialAnalysis);
+router.post("/payment-analysis",protect,c.paymentAnalysis);
+router.post("/voice-analysis",protect,c.voiceAnalysis);
+router.post("/message-analysis",protect,c.messageAnalysis);
+router.post("/text-analysis",protect,c.textAnalysis);
+router.post("/intelligence-search",protect,c.intelligenceSearch);
+router.get("/intelligence-stats",protect,c.intelligenceStats);
+router.post("/transcribe",protect,c.transcribe);
+module.exports=router;
