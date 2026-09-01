@@ -8,6 +8,7 @@ import Settings from "./components/Settings";
 import Transactions from "./components/Transactions";
 import ScamDetection from "./components/ScamDetection";
 import FraudIntelligence from "./components/FraudIntelligence";
+import ScamAwareness from "./components/ScamAwareness";
 
 import translations from "./translations";
 import "./Dashboard.css";
@@ -26,6 +27,7 @@ export default function Dashboard({ onNavigate }) {
   const [showTransactions, setShowTransactions] = useState(false);
   const [showScamDetection, setShowScamDetection] = useState(false);
   const [showFraudIntelligence, setShowFraudIntelligence] = useState(false);
+  const [showScamAwareness, setShowScamAwareness] = useState(false);
 
 
   // =====================================================
@@ -56,6 +58,7 @@ export default function Dashboard({ onNavigate }) {
     setShowScamChainTimeline(false);
     setShowTransactions(false);
     setShowScamDetection(false);
+    setShowScamAwareness(false);
 
     setShowFraudIntelligence(true);
   };
@@ -74,8 +77,28 @@ export default function Dashboard({ onNavigate }) {
     setShowScamChainTimeline(false);
     setShowTransactions(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
 
     setShowScamDetection(true);
+  };
+
+
+  // =====================================================
+  // OPEN SCAM AWARENESS
+  // =====================================================
+
+  const openScamAwareness = () => {
+
+    setShowPaymentDemo(false);
+    setShowFamilyProtection(false);
+    setShowEmergencyCenter(false);
+    setShowSettings(false);
+    setShowScamChainTimeline(false);
+    setShowTransactions(false);
+    setShowScamDetection(false);
+    setShowFraudIntelligence(false);
+
+    setShowScamAwareness(true);
   };
 
 
@@ -92,6 +115,7 @@ export default function Dashboard({ onNavigate }) {
     setShowTransactions(false);
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
 
     setShowScamChainTimeline(true);
   };
@@ -110,6 +134,7 @@ export default function Dashboard({ onNavigate }) {
     setShowScamChainTimeline(false);
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
 
     setShowTransactions(true);
   };
@@ -137,6 +162,7 @@ export default function Dashboard({ onNavigate }) {
     setShowTransactions(false);
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
 
     setShowEmergencyCenter(true);
   };
@@ -155,6 +181,7 @@ export default function Dashboard({ onNavigate }) {
     setShowTransactions(false);
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
 
     setShowFamilyProtection(true);
   };
@@ -173,6 +200,7 @@ export default function Dashboard({ onNavigate }) {
     setShowTransactions(false);
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
 
     setShowSettings(true);
   };
@@ -191,6 +219,7 @@ export default function Dashboard({ onNavigate }) {
     setShowTransactions(false);
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
 
     setShowPaymentDemo(true);
   };
@@ -210,6 +239,7 @@ export default function Dashboard({ onNavigate }) {
     setShowTransactions(false);
     setShowScamDetection(false);
     setShowFraudIntelligence(false);
+    setShowScamAwareness(false);
   };
 
 
@@ -266,7 +296,8 @@ export default function Dashboard({ onNavigate }) {
                 !showScamChainTimeline &&
                 !showTransactions &&
                 !showScamDetection &&
-                !showFraudIntelligence
+                !showFraudIntelligence &&
+                !showScamAwareness
                   ? "active"
                   : ""
               }
@@ -407,6 +438,37 @@ export default function Dashboard({ onNavigate }) {
               </span>
 
               {t.scamDetection}
+
+            </a>
+
+          </li>
+
+
+          {/* =================================================
+              SCAM AWARENESS
+          ================================================= */}
+
+          <li>
+
+            <a
+              href="#scam-awareness"
+
+              className={showScamAwareness ? "active" : ""}
+
+              onClick={(e) => {
+
+                e.preventDefault();
+
+                openScamAwareness();
+
+              }}
+            >
+
+              <span className="ic">
+                🛡️
+              </span>
+
+              Scam Awareness
 
             </a>
 
@@ -702,12 +764,13 @@ export default function Dashboard({ onNavigate }) {
             PAGE CONTENT SWITCHER
         ===================================================== */}
 
+        {showScamAwareness ? (
 
-        {/* =====================================================
-            FRAUD INTELLIGENCE
-        ===================================================== */}
+          <ScamAwareness
+            onBack={backToDashboard}
+          />
 
-        {showFraudIntelligence ? (
+        ) : showFraudIntelligence ? (
 
           <FraudIntelligence
             onBack={backToDashboard}
@@ -715,69 +778,35 @@ export default function Dashboard({ onNavigate }) {
 
         ) : showScamDetection ? (
 
-
-          /* ===================================================
-             SCAM DETECTION
-          =================================================== */
-
           <ScamDetection
             onBack={backToDashboard}
           />
 
         ) : showTransactions ? (
 
-
-          /* ===================================================
-             TRANSACTIONS
-          =================================================== */
-
           <Transactions
             onBack={backToDashboard}
           />
 
-
         ) : showScamChainTimeline ? (
-
-
-          /* ===================================================
-             SCAM CHAIN TIMELINE
-          =================================================== */
 
           <ScamChainTimeline
             onBack={backToDashboard}
           />
 
-
         ) : showEmergencyCenter ? (
-
-
-          /* ===================================================
-             EMERGENCY CENTER
-          =================================================== */
 
           <EmergencyCenter
             onBack={backToDashboard}
           />
 
-
         ) : showFamilyProtection ? (
-
-
-          /* ===================================================
-             FAMILY PROTECTION
-          =================================================== */
 
           <FamilyProtection
             onBack={backToDashboard}
           />
 
-
         ) : showPaymentDemo ? (
-
-
-          /* ===================================================
-             MAKE A PAYMENT
-          =================================================== */
 
           <PaymentRiskDemo
             onBack={() => {
@@ -785,13 +814,7 @@ export default function Dashboard({ onNavigate }) {
             }}
           />
 
-
         ) : showSettings ? (
-
-
-          /* ===================================================
-             SETTINGS
-          =================================================== */
 
           <Settings
 
@@ -811,16 +834,13 @@ export default function Dashboard({ onNavigate }) {
 
           />
 
-
         ) : (
-
 
           /* ===================================================
              NORMAL DASHBOARD
           =================================================== */
 
           <div className="content">
-
 
             {/* =================================================
                 STATUS BANNER
@@ -878,9 +898,6 @@ export default function Dashboard({ onNavigate }) {
 
             <div className="stats-row">
 
-
-              {/* TOTAL TRANSACTIONS */}
-
               <div className="stat-card">
 
                 <div className="stat-top">
@@ -916,8 +933,6 @@ export default function Dashboard({ onNavigate }) {
 
               </div>
 
-
-              {/* SAFE TRANSACTIONS */}
 
               <div className="stat-card">
 
@@ -955,8 +970,6 @@ export default function Dashboard({ onNavigate }) {
               </div>
 
 
-              {/* RISK ALERTS */}
-
               <div className="stat-card">
 
                 <div className="stat-top">
@@ -993,8 +1006,6 @@ export default function Dashboard({ onNavigate }) {
               </div>
 
 
-              {/* PROTECTED FAMILY */}
-
               <div className="stat-card">
 
                 <div className="stat-top">
@@ -1030,8 +1041,6 @@ export default function Dashboard({ onNavigate }) {
 
               </div>
 
-
-              {/* SCAM REPORTS */}
 
               <div className="stat-card">
 
@@ -1107,8 +1116,6 @@ export default function Dashboard({ onNavigate }) {
                 </div>
 
 
-                {/* AMAZON */}
-
                 <div className="tx">
 
                   <div
@@ -1155,8 +1162,6 @@ export default function Dashboard({ onNavigate }) {
 
                 </div>
 
-
-                {/* RAHUL */}
 
                 <div className="tx">
 
@@ -1210,8 +1215,6 @@ export default function Dashboard({ onNavigate }) {
                 </div>
 
 
-                {/* HIGH RISK */}
-
                 <div className="tx">
 
                   <div
@@ -1264,8 +1267,6 @@ export default function Dashboard({ onNavigate }) {
                 </div>
 
 
-                {/* NETFLIX */}
-
                 <div className="tx">
 
                   <div
@@ -1312,8 +1313,6 @@ export default function Dashboard({ onNavigate }) {
 
                 </div>
 
-
-                {/* SALARY */}
 
                 <div className="tx">
 
@@ -1398,8 +1397,6 @@ export default function Dashboard({ onNavigate }) {
                 </div>
 
 
-                {/* TRANSACTION RISK */}
-
                 <div className="risk-row">
 
                   <div className="risk-top">
@@ -1433,8 +1430,6 @@ export default function Dashboard({ onNavigate }) {
 
                 </div>
 
-
-                {/* BENEFICIARY RISK */}
 
                 <div className="risk-row">
 
@@ -1470,8 +1465,6 @@ export default function Dashboard({ onNavigate }) {
                 </div>
 
 
-                {/* SCAM ACTIVITY */}
-
                 <div className="risk-row">
 
                   <div className="risk-top">
@@ -1506,8 +1499,6 @@ export default function Dashboard({ onNavigate }) {
                 </div>
 
 
-                {/* DEVICE RISK */}
-
                 <div className="risk-row">
 
                   <div className="risk-top">
@@ -1529,7 +1520,8 @@ export default function Dashboard({ onNavigate }) {
 
                   <div className="bar-bg">
 
-                    <div className="bar-fill"
+                    <div
+                      className="bar-fill"
                       style={{
                         width: "15%",
                         background: "var(--green)",
@@ -2110,8 +2102,6 @@ export default function Dashboard({ onNavigate }) {
                 <div className="tips">
 
 
-                  {/* TIP 1 */}
-
                   <div className="tip">
 
                     <div className="ic">
@@ -2133,8 +2123,6 @@ export default function Dashboard({ onNavigate }) {
                   </div>
 
 
-                  {/* TIP 2 */}
-
                   <div className="tip">
 
                     <div className="ic">
@@ -2155,8 +2143,6 @@ export default function Dashboard({ onNavigate }) {
 
                   </div>
 
-
-                  {/* TIP 3 */}
 
                   <div className="tip">
 
